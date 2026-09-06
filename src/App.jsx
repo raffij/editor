@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { BlockRow } from './components/block-editor'
 import { Icon, ToolbarButton } from './components/editor-controls'
 import { focusBlockStart, scheduleCaretAtTextOffset } from './logic/caret-navigation'
-import { convertBlockContent, hasReadableText, highlightJson, htmlTextLength, makeBlockId, mergeBlockContent, starterBlocks, typeMeta } from './logic/document-model'
+import { blockDescription, convertBlockContent, emptyBlockHtml, hasReadableText, highlightJson, htmlTextLength, makeBlockId, mergeBlockContent, starterBlocks, typeMeta } from './logic/document-model'
 
 export default function App() {
   const [blocks, setBlocks] = useState(() => {
@@ -15,7 +15,6 @@ export default function App() {
   const [toast, setToast] = useState('')
   const selectionAnchorRef = useRef(null)
 
-  const activeBlock = blocks.find((block) => block.id === activeId) || blocks[0]
   const characterCount = useMemo(() => blocks.reduce((sum, block) => sum + (block.html || '').replace(/<[^>]+>/g, '').length, 0), [blocks])
 
   useEffect(() => {
@@ -30,12 +29,13 @@ export default function App() {
     const newBlock = {
       id: makeBlockId(type),
       type,
-      html: type.includes('list') ? '<li></li>' : '',
+      html: emptyBlockHtml(type),
     }
     setBlocks((current) => {
       const position = current.findIndex((block) => block.id === afterId)
       const next = [...current]
-      next.splice(position < 0 ? next.length : position + 1, 0, newBlock)
+      const insertAt = position < 0 ? next.length : position + 1
+      next.splice(insertAt, 0, newBlock)
       return next
     })
     setActiveId(newBlock.id)
@@ -54,7 +54,8 @@ export default function App() {
 
   const moveBlock = (id, direction) => setBlocks((current) => {
     const index = current.findIndex((block) => block.id === id)
-    const nextIndex = direction === 'move-up' ? index - 1 : index + 1
+    let nextIndex = index + 1
+    if (direction === 'move-up') nextIndex = index - 1
     if (nextIndex < 0 || nextIndex >= current.length) return current
     const next = [...current]
     ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
@@ -102,7 +103,11 @@ export default function App() {
     const target = document.activeElement
     if (target?.isContentEditable) {
       const row = target.closest('.block-row')
-      const blockId = row ? blocks[Array.from(document.querySelectorAll('.block-row')).indexOf(row)]?.id : null
+      let blockId = null
+      if (row) {
+        const rowIndex = Array.from(document.querySelectorAll('.block-row')).indexOf(row)
+        blockId = blocks[rowIndex]?.id || null
+      }
       if (blockId) updateBlock(blockId, { html: target.innerHTML })
     }
   }
@@ -131,6 +136,10 @@ export default function App() {
     setTimeout(() => setToast(''), 2400)
   }
 
+  const saveLabel = saved ? 'Saved just now' : 'Unsaved changes'
+  const saveDotClass = saved ? 'saved' : ''
+  const jsonPanelClass = jsonOpen ? 'open' : 'closed'
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -141,7 +150,7 @@ export default function App() {
           <span className="brand-context">visual editor</span>
         </div>
         <div className="topbar-actions">
-          <div className="save-state"><span className={`save-dot ${saved ? 'saved' : ''}`} />{saved ? 'Saved just now' : 'Unsaved changes'}</div>
+          <div className="save-state"><span className={`save-dot ${saveDotClass}`} />{saveLabel}</div>
           <button className="icon-button" aria-label="Search" title="Search"><Icon name="search" size={18} /></button>
           <button className="icon-button" aria-label="Settings" title="Settings"><Icon name="settings" size={18} /></button>
           <div className="avatar">RS</div>
@@ -186,12 +195,12 @@ export default function App() {
               </div>
               <div className="add-block-wrap">
                 <button className="add-block-button" onClick={() => setShowAddMenu((value) => !value)}><Icon name="plus" size={17} />Add block</button>
-                {showAddMenu && <div className="add-menu"><div className="add-menu-label">Insert a block</div>{Object.entries(typeMeta).map(([type, meta]) => <button key={type} onClick={() => addBlock(type, activeId)}><span className="add-menu-icon">{meta.icon}</span><span><strong>{meta.label}</strong><small>{type === 'paragraph' ? 'A freeform text block' : type === 'heading' ? 'A section title' : type === 'quote' ? 'A pull quote or callout' : 'A structured list'}</small></span><span className="add-menu-key">{type === 'paragraph' ? 'P' : ''}</span></button>)}</div>}
+                {showAddMenu && <div className="add-menu"><div className="add-menu-label">Insert a block</div>{Object.entries(typeMeta).map(([type, meta]) => <button key={type} onClick={() => addBlock(type, activeId)}><span className="add-menu-icon">{meta.icon}</span><span><strong>{meta.label}</strong><small>{blockDescription(type)}</small></span><span className="add-menu-key">{type === 'paragraph' ? 'P' : ''}</span></button>)}</div>}
               </div>
               <div className="canvas-footer"><span>Tip: select a block to see its structure controls</span><span>Markdown shortcuts supported</span></div>
             </section>
 
-            <aside className={`json-panel ${jsonOpen ? 'open' : 'closed'}`}>
+            <aside className={`json-panel ${jsonPanelClass}`}>
               <div className="json-header"><div><span className="panel-eyebrow">Document model</span><h2>Live JSON</h2></div><button className="panel-toggle" onClick={() => setJsonOpen((value) => !value)} aria-label={jsonOpen ? 'Collapse JSON panel' : 'Expand JSON panel'}><Icon name="panel" size={18} /></button></div>
               {jsonOpen && <>
                 <div className="json-toolbar"><span className="json-file"><span className="json-dot" />document.json</span><button className="copy-button" onClick={() => { navigator.clipboard?.writeText(JSON.stringify(blocks, null, 2)); setToast('JSON copied') }}>Copy</button></div>

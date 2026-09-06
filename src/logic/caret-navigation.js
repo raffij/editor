@@ -11,7 +11,8 @@ export function isCaretAtBlockStart(element, selection, node = selection.anchorN
 }
 
 function blockElementForNode(node) {
-  const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
+  if (!node) return null
+  const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
   return element?.closest?.('[data-block-id]') || null
 }
 
@@ -33,7 +34,8 @@ function textPointAtOffset(element, offset) {
     if (remaining < textLength) return { node: textNode, offset: remaining }
     if (remaining === textLength) {
       const nextTextNode = walker.nextNode()
-      return nextTextNode ? { node: nextTextNode, offset: 0 } : { node: textNode, offset: textLength }
+      if (nextTextNode) return { node: nextTextNode, offset: 0 }
+      return { node: textNode, offset: textLength }
     }
     remaining -= textLength
     textNode = walker.nextNode()
@@ -78,7 +80,8 @@ function setSelectionBetweenBlocks(anchor, focus) {
 function adjacentBlockElement(element, direction) {
   const blocks = [...document.querySelectorAll('.document-canvas [data-block-id]')]
   const index = blocks.indexOf(element)
-  const targetIndex = direction === 'previous' ? index - 1 : index + 1
+  let targetIndex = index + 1
+  if (direction === 'previous') targetIndex = index - 1
   return targetIndex >= 0 && targetIndex < blocks.length ? blocks[targetIndex] : null
 }
 
@@ -133,8 +136,13 @@ function verticalTargetOffset(element, sourceX, direction) {
     : Math.min(...points.map((point) => point.top))
   const lineHeight = parseFloat(getComputedStyle(element).lineHeight) || 24
   const rowPoints = points.filter((point) => Math.abs(point.top - targetTop) <= Math.max(2, lineHeight * 0.35))
-  const candidates = rowPoints.length ? rowPoints : points
-  return candidates.reduce((closest, point) => Math.abs(point.left - sourceX) < Math.abs(closest.left - sourceX) ? point : closest).offset
+  let candidates = rowPoints
+  if (!candidates.length) candidates = points
+  const closest = candidates.reduce((current, point) => {
+    if (Math.abs(point.left - sourceX) < Math.abs(current.left - sourceX)) return point
+    return current
+  })
+  return closest.offset
 }
 
 function moveToAdjacentBlock(element, direction, extendSelection, selectionAnchorRef, textOffset) {
@@ -142,7 +150,10 @@ function moveToAdjacentBlock(element, direction, extendSelection, selectionAncho
   if (!target) return false
 
   const selection = window.getSelection()
-  const targetOffset = textOffset ?? (direction === 'previous' ? htmlTextLength(target.innerHTML) : 0)
+  let targetOffset = textOffset
+  if (targetOffset === undefined) {
+    targetOffset = direction === 'previous' ? htmlTextLength(target.innerHTML) : 0
+  }
 
   if (extendSelection) {
     if (!selectionAnchorRef.current) {
@@ -173,9 +184,14 @@ export function handleArrowNavigation(event, element, selectionAnchorRef) {
 
   if (crossesBlocks && !event.shiftKey && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
     const collapseToStart = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-    const node = collapseToStart ? range.startContainer : range.endContainer
-    const offset = collapseToStart ? range.startOffset : range.endOffset
-    const targetElement = collapseToStart ? startElement : endElement
+    let node = range.endContainer
+    let offset = range.endOffset
+    let targetElement = endElement
+    if (collapseToStart) {
+      node = range.startContainer
+      offset = range.startOffset
+      targetElement = startElement
+    }
     event.preventDefault()
     selectionAnchorRef.current = null
     focusBlockAtTextOffset(targetElement.dataset.blockId, textOffsetAtPoint(targetElement, node, offset))
@@ -189,7 +205,8 @@ export function handleArrowNavigation(event, element, selectionAnchorRef) {
   if (!canCrossSelection) return false
 
   if (event.shiftKey && selectionAnchorRef.current && focusElement !== element && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-    const step = event.key === 'ArrowLeft' ? -1 : 1
+    let step = 1
+    if (event.key === 'ArrowLeft') step = -1
     const nextOffset = focusOffset + step
     if (nextOffset >= 0 && nextOffset <= htmlTextLength(focusElement.innerHTML)) {
       event.preventDefault()

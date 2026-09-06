@@ -1,14 +1,14 @@
 import React, { useLayoutEffect, useRef } from 'react'
 import { handleArrowNavigation, isCaretAtBlockStart } from '../logic/caret-navigation'
-import { typeMeta } from '../logic/document-model'
+import { blockTagName, emptyBlockHtml, isListType, typeMeta } from '../logic/document-model'
 import { Icon } from './editor-controls'
 
 function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selectionAnchorRef }) {
   const ref = useRef(null)
   const lastHtmlRef = useRef(null)
   const lastTypeRef = useRef(block.type)
-  const Tag = block.type === 'heading' ? 'h1' : block.type === 'quote' ? 'blockquote' : block.type === 'bulleted-list' ? 'ul' : block.type === 'numbered-list' ? 'ol' : 'p'
-  const content = block.html || (block.type.includes('list') ? '<li></li>' : '')
+  const Tag = blockTagName(block.type)
+  const content = block.html || emptyBlockHtml(block.type)
 
   const splitAtCaret = (event) => {
     if (event.key !== 'Enter' || event.shiftKey) return
@@ -16,10 +16,10 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
     if (!selection?.rangeCount || !ref.current?.contains(selection.anchorNode)) return
 
     const range = selection.getRangeAt(0)
-    if (block.type.includes('list')) {
-      const listItem = selection.anchorNode?.nodeType === Node.ELEMENT_NODE
-        ? selection.anchorNode.closest('li')
-        : selection.anchorNode?.parentElement?.closest('li')
+    if (isListType(block.type)) {
+      let listItem = null
+      if (selection.anchorNode?.nodeType === Node.ELEMENT_NODE) listItem = selection.anchorNode.closest('li')
+      else listItem = selection.anchorNode?.parentElement?.closest('li')
       if (listItem && listItem.textContent.trim()) return
 
       event.preventDefault()

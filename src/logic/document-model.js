@@ -36,9 +36,37 @@ export const typeMeta = {
 
 export const makeBlockId = (type) => `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
+export function isListType(type) {
+  return type.includes('list')
+}
+
+export function emptyBlockHtml(type) {
+  if (isListType(type)) return '<li></li>'
+  return ''
+}
+
+export function blockTagName(type) {
+  switch (type) {
+    case 'heading': return 'h1'
+    case 'quote': return 'blockquote'
+    case 'bulleted-list': return 'ul'
+    case 'numbered-list': return 'ol'
+    default: return 'p'
+  }
+}
+
+export function blockDescription(type) {
+  switch (type) {
+    case 'paragraph': return 'A freeform text block'
+    case 'heading': return 'A section title'
+    case 'quote': return 'A pull quote or callout'
+    default: return 'A structured list'
+  }
+}
+
 export function convertBlockContent(block, nextType) {
-  const isList = block.type.includes('list')
-  const nextIsList = nextType.includes('list')
+  const isList = isListType(block.type)
+  const nextIsList = isListType(nextType)
   if (nextIsList && !isList) return `<li>${block.html || ''}</li>`
   if (!nextIsList && isList) return (block.html || '').replace(/<\/li>\s*<li>/gi, '<br>').replace(/<\/?li>/gi, '')
   return block.html
