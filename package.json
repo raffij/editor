@@ -7,13 +7,17 @@
     "dev": "vite",
     "build": "vite build",
     "build:embed": "vite build --mode embed",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "EDITOR_E2E_HEADED=1 playwright test --project=chromium-headed --project=webkit-headed"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "vite": "latest"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
 }

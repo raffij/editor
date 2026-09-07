@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef } from 'react'
-import { handleArrowNavigation, isCaretAtBlockStart } from '../logic/caret-navigation'
+import { beginBlockDragSelection, handleArrowNavigation, handleCrossBlockEditKey, isCaretAtBlockStart } from '../logic/caret-navigation'
 import { blockTagName, emptyBlockHtml, isListType, typeMeta } from '../logic/document-model'
 import { Icon } from './editor-controls'
 
@@ -73,7 +73,10 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
       data-placeholder={typeMeta[block.type].hint}
       data-block-id={block.id}
       onFocus={onFocus}
-      onMouseDown={() => { selectionAnchorRef.current = null }}
+      onMouseDown={(event) => {
+        selectionAnchorRef.current = null
+        beginBlockDragSelection(event)
+      }}
       onInput={(event) => {
         const html = event.currentTarget.innerHTML
         lastHtmlRef.current = html
@@ -82,6 +85,7 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
       }}
       onKeyDown={(event) => {
         if (handleArrowNavigation(event, ref.current, selectionAnchorRef)) return
+        handleCrossBlockEditKey(event)
         if (!event.shiftKey) selectionAnchorRef.current = null
         mergeAtStart(event)
         if (!event.defaultPrevented) splitAtCaret(event)
