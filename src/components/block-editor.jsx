@@ -113,9 +113,8 @@ export function BlockRow({ block, index, isActive, onFocus, onInput, onSplit, on
     <div className={`block-row ${isActive ? 'is-active' : ''}`} onClick={focusBlock}>
       <div className="block-gutter">
         <button className={`block-marker-button ${overlayOpen && isActive ? 'is-open' : ''}`} aria-label={`${typeMeta[block.type].label} block options`} aria-expanded={overlayOpen && isActive} onClick={toggleOverlay}>
-          <span className="block-marker">{typeMeta[block.type].icon}</span>
+          <span className="block-marker"><Icon name="dots" size={15} /></span>
         </button>
-        <span className="block-index">{String(index + 1).padStart(2, '0')}</span>
       </div>
       <div className="block-main">
         <BlockContent block={block} onFocus={focusBlock} onInput={onInput} onSplit={onSplit} onBackspace={onBackspace} selectionAnchorRef={selectionAnchorRef} />

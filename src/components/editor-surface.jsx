@@ -93,7 +93,6 @@ export function EditorSurface({
 
       <div className={`editor-layout ${layoutClass}`}>
         <section className="document-canvas" aria-label="Document editor">
-          <div className="canvas-kicker"><span className="kicker-line" />Draft / 01</div>
           <div className="block-list">
             {blocks.map((block, index) => <BlockRow key={block.id} block={block} index={index} isActive={activeId === block.id} onFocus={() => setActiveId(block.id)} onInput={(html) => updateBlock(block.id, { html })} onSplit={(beforeHtml, afterHtml) => splitBlock(block.id, beforeHtml, afterHtml)} onBackspace={(html) => mergeBlockAtStart(block.id, html)} onChangeType={(type) => updateBlock(block.id, { type, html: convertBlockContent(block, type) })} onDelete={() => deleteBlock(block.id)} onAddAfter={() => addBlock('paragraph', block.id)} onFormat={(action) => moveBlock(block.id, action)} selectionAnchorRef={selectionAnchorRef} />)}
           </div>
