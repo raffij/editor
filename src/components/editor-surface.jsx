@@ -2,6 +2,37 @@ import React from 'react'
 import { BlockRow } from './block-editor'
 import { Icon, ToolbarButton } from './editor-controls'
 import { blockDescription, highlightJson, typeMeta } from '../logic/document-model'
+import { crossBlockSelectionRects, setCrossBlockSplitHandler, subscribeCrossBlockSelection } from '../logic/caret-navigation'
+
+// Paints the highlight for a cross-block selection. Some engines (WebKit/Safari)
+// clamp a DOM Selection to a single editing host, so the cross-block selection
+// is tracked separately and this overlay renders its line rects.
+function CrossBlockSelectionOverlay() {
+  const [model, setModel] = React.useState(null)
+  const [rects, setRects] = React.useState([])
+
+  React.useEffect(() => subscribeCrossBlockSelection(setModel), [])
+
+  React.useEffect(() => {
+    const update = () => setRects(model ? crossBlockSelectionRects() : [])
+    update()
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [model])
+
+  if (!model || !rects.length || model.anchor.id === model.focus.id) return null
+  return (
+    <div className="cross-selection-overlay" aria-hidden="true">
+      {rects.map((rect, index) => (
+        <span key={index} style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }} />
+      ))}
+    </div>
+  )
+}
 
 export function EditorSurface({
   editor,
@@ -42,6 +73,10 @@ export function EditorSurface({
   const jsonPanelClass = jsonOpen ? 'open' : 'closed'
   const layoutClass = showJson ? '' : 'without-json'
 
+  React.useEffect(() => {
+    setCrossBlockSplitHandler((blockId, beforeHtml, afterHtml) => splitBlock(blockId, beforeHtml, afterHtml))
+  }, [splitBlock])
+
   return (
     <div className="papertrail-editor-surface">
       {showHeader && <div className="editor-header">
@@ -79,6 +114,7 @@ export function EditorSurface({
         </aside>}
       </div>
       {toast && <div className="toast"><span><Icon name="check" size={15} /></span>{toast}</div>}
+      <CrossBlockSelectionOverlay />
     </div>
   )
 }
