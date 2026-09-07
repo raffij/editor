@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { focusBlockStart, scheduleCaretAtTextOffset } from './caret-navigation'
-import { convertBlockContent, emptyBlockHtml, hasReadableText, htmlTextLength, makeBlockId, mergeBlockContent, starterBlocks } from './document-model'
+import { cleanBlockHtml, cleanElement, convertBlockContent, emptyBlockHtml, hasReadableText, htmlTextLength, makeBlockId, mergeBlockContent, starterBlocks } from './document-model'
 
 function cloneBlocks(blocks) {
   return blocks.map((block) => ({ ...block }))
@@ -44,7 +44,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     else setInternalBlocks(next)
   }
 
-  const updateBlock = (id, changes) => commitBlocks((current) => current.map((block) => block.id === id ? { ...block, ...changes } : block))
+  const updateBlock = (id, changes) => commitBlocks((current) => current.map((block) => block.id === id ? { ...block, ...changes, ...(changes.html != null ? { html: cleanBlockHtml(changes.html) } : {}) } : block))
 
   const addBlock = (type = 'paragraph', afterId = blocks[blocks.length - 1]?.id) => {
     const newBlock = { id: makeBlockId(type), type, html: emptyBlockHtml(type) }
@@ -119,6 +119,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     document.execCommand(command, false, value)
     const target = document.activeElement
     if (!target?.isContentEditable) return
+    cleanElement(target)
     const row = target.closest('.block-row')
     if (!row) return
     const rowIndex = Array.from(document.querySelectorAll('.block-row')).indexOf(row)
