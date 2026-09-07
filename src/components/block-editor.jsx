@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useRef } from 'react'
 import { beginBlockDragSelection, handleArrowNavigation, handleCrossBlockEditKey, isCaretAtBlockStart } from '../logic/caret-navigation'
-import { blockTagName, emptyBlockHtml, isListType, typeMeta } from '../logic/document-model'
+import { blockTagName, cleanBlockHtml, cleanElement, emptyBlockHtml, isListType, typeMeta } from '../logic/document-model'
 import { Icon } from './editor-controls'
 
 function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selectionAnchorRef }) {
@@ -27,7 +27,7 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
       const sourceItems = Array.from(ref.current.querySelectorAll('li'))
       const itemIndex = sourceItems.indexOf(listItem)
       if (itemIndex >= 0) listClone.querySelectorAll('li')[itemIndex]?.remove()
-      onSplit(listClone.innerHTML, '')
+      onSplit(cleanBlockHtml(listClone.innerHTML), '')
       return
     }
 
@@ -42,7 +42,7 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
     const after = document.createElement('div')
     before.appendChild(beforeRange.cloneContents())
     after.appendChild(afterRange.cloneContents())
-    onSplit(before.innerHTML, after.innerHTML)
+    onSplit(cleanBlockHtml(before.innerHTML), cleanBlockHtml(after.innerHTML))
   }
 
   const mergeAtStart = (event) => {
@@ -52,15 +52,16 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
     if (!isCaretAtBlockStart(ref.current, selection)) return
 
     event.preventDefault()
-    onBackspace(ref.current.innerHTML)
+    onBackspace(cleanBlockHtml(ref.current.innerHTML))
   }
 
   useLayoutEffect(() => {
     if (!ref.current) return
-    const htmlChangedOutsideEditor = lastHtmlRef.current !== content
+    const cleanedContent = cleanBlockHtml(content)
+    const htmlChangedOutsideEditor = lastHtmlRef.current !== cleanedContent
     const typeChanged = lastTypeRef.current !== block.type
-    if ((htmlChangedOutsideEditor || typeChanged) && ref.current.innerHTML !== content) ref.current.innerHTML = content
-    lastHtmlRef.current = content
+    if ((htmlChangedOutsideEditor || typeChanged) && ref.current.innerHTML !== cleanedContent) ref.current.innerHTML = cleanedContent
+    lastHtmlRef.current = cleanedContent
     lastTypeRef.current = block.type
   }, [block.type, content])
 
@@ -78,6 +79,7 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
         beginBlockDragSelection(event)
       }}
       onInput={(event) => {
+        cleanElement(event.currentTarget)
         const html = event.currentTarget.innerHTML
         lastHtmlRef.current = html
         selectionAnchorRef.current = null

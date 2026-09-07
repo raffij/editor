@@ -68,6 +68,43 @@ export const setCaret = (page, column, offset = 0) =>
     return { id: el.dataset.blockId, offset: o }
   }, { col: column, off: offset })
 
+// Select a character range within a block by text offset (for formatting tests).
+export const selectRange = (page, blockId, start, end) =>
+  page.evaluate(({ blockId, start, end }) => {
+    const el = document.querySelector(`[data-block-id="${blockId}"]`)
+    el.focus()
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    const nodes = []
+    let node
+    while ((node = walker.nextNode())) nodes.push(node)
+    const locate = (offset) => {
+      let remaining = offset
+      for (const tn of nodes) {
+        if (remaining <= tn.textContent.length) return { tn, o: remaining }
+        remaining -= tn.textContent.length
+      }
+      const last = nodes[nodes.length - 1]
+      return last ? { tn: last, o: last.textContent.length } : { tn: el, o: 0 }
+    }
+    const s = locate(start)
+    const e = locate(end)
+    const range = document.createRange()
+    range.setStart(s.tn, s.o)
+    range.setEnd(e.tn, e.o)
+    const sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
+    return el.innerHTML
+  }, { blockId, start, end })
+
+// Live innerHTML of a block (equals what is stored in state after onInput).
+export const storedHtml = (page, blockId) =>
+  page.evaluate((id) => document.querySelector(`[data-block-id="${id}"]`).innerHTML, blockId)
+
+// Live text of the JSON panel (asserts no junk markup is persisted).
+export const jsonPanelText = (page) =>
+  page.evaluate(() => document.querySelector('.json-code')?.textContent ?? '')
+
 // Selection + overlay state, including whether any highlight bleeds into the
 // 40px control gutter column (the bug this suite guards: highlights must cover
 // text only, never the block marker / index cells on the left).
