@@ -114,14 +114,15 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
 
     const previous = blocks[index - 1]
     const current = { ...blocks[index], html: currentHtml }
-    const previousTextLength = htmlTextLength(previous.html)
     selectionAnchorRef.current = null
+    const mergedHtml = mergeBlockContent(previous, current)
+    const mergedTextLength = htmlTextLength(mergedHtml)
     const next = [...blocks]
-    next[index - 1] = { ...previous, html: mergeBlockContent(previous, current) }
+    next[index - 1] = { ...previous, html: mergedHtml }
     next.splice(index, 1)
     commitBlocks(next)
     setActiveId(previous.id)
-    scheduleCaretAtTextOffset(previous.id, previousTextLength)
+    scheduleCaretAtTextOffset(previous.id, mergedTextLength)
   }
 
   const execFormat = (command, value = null) => {
