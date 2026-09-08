@@ -55,15 +55,17 @@ test.describe('vertical navigation + cross-block editing', () => {
     expect(after3.length, `${before3.length} -> ${after3.length}`).toBeLessThan(before3.length / 2)
     // The replacement char is present exactly once.
     expect((after3.match(/Z/g) || []).length).toBe(1)
-    // Fully-selected blocks (lead, quote spanning the drag) are gone.
-    const leadAndQuote = blocks3.filter((b) => b.id === 'lead' || b.id === 'quote')
-    expect(leadAndQuote.length, JSON.stringify(blocks3.map((b) => b.id))).toBe(0)
-    // No stray newline artefacts: block count shrank.
-    expect(blocks3.length, JSON.stringify(blocks3.map((b) => b.id))).toBeLessThan(4)
+    // Fully-selected blocks are gone and the trimmed halves are merged.
+    const goneIds = blocks3.map((b) => b.id)
+    expect(goneIds.includes('lead')).toBe(false)
+    expect(goneIds.includes('quote')).toBe(false)
+    expect(goneIds.includes('principles')).toBe(false)
+    // The two surviving blocks are merged into one.
+    expect(blocks3.length).toBe(2)
     expect(errors).toEqual([])
   })
 
-  test('g4: backspace over the selection deletes it, no corruption', async ({ page }) => {
+  test('g4: backspace over the selection deletes and merges blocks', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before4 = await readDoc(page)
@@ -78,22 +80,14 @@ test.describe('vertical navigation + cross-block editing', () => {
     // The selection is deleted wholesale, not a single character.
     expect(after4.length, `${before4.length} -> ${after4.length}`).toBeLessThan(before4.length / 2)
     expect(ov4.count, JSON.stringify(ov4)).toBe(0)
-    // Middle blocks that were fully selected are gone.
-    const goneIds = blocks4.map((b) => b.id)
-    expect(goneIds.includes('lead')).toBe(false)
-    expect(goneIds.includes('quote')).toBe(false)
-    expect(goneIds.includes('principles')).toBe(false)
-    // Remaining blocks are only the start and end of the original selection
-    // (intro prefix + closing suffix).  Exactly which characters survive
-    // depends on the drag pixel position which varies across engines/CI, so
-    // we only assert structural invariants: the remaining text is much
-    // shorter and no empty blocks were left behind.
-    expect(blocks4.length, JSON.stringify(blocks4.map((b) => ({ id: b.id, text: b.text })))).toBe(2)
-    expect(blocks4.every((b) => b.text.length > 0), JSON.stringify(blocks4)).toBe(true)
+    // All middle blocks gone, start+end merged into one.
+    expect(blocks4.length, JSON.stringify(blocks4.map((b) => b.id))).toBe(1)
+    // No empty or corrupted content.
+    expect(blocks4[0].text.length > 0).toBe(true)
     expect(errors).toEqual([])
   })
 
-  test('g5: delete over the selection deletes it', async ({ page }) => {
+  test('g5: delete over the selection deletes and merges blocks', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before5 = await readDoc(page)
@@ -106,7 +100,8 @@ test.describe('vertical navigation + cross-block editing', () => {
     const blocks5 = await readBlocks(page)
     // The selection is deleted wholesale, not a single character.
     expect(after5.length, `${before5.length} -> ${after5.length}`).toBeLessThan(before5.length / 2)
-    expect(blocks5.map((b) => b.id).includes('lead')).toBe(false)
+    // All middle blocks gone, start+end merged into one.
+    expect(blocks5.length).toBe(1)
     expect(errors).toEqual([])
   })
 

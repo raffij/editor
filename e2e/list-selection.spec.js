@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, selectionState, setCaret, fireClipboard, readDoc, waitForStable } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, setCaret, fireClipboard, readDoc, waitForStable, readBlocks } from './_helpers.js'
 
 // List keyboard-selection flows: crossing in/out of the bulleted list, falling
 // back to the anchor block, and clean copy/type over cross-block selections.
@@ -189,7 +189,7 @@ test.describe('list keyboard selection', () => {
     expect(errors).toEqual([])
   })
 
-  test('L9: typing over a quote->list selection deletes it and inserts the char', async ({ page }) => {
+  test('L9: typing over a quote->list selection deletes and merges', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     await caretQuoteEnd(page)
@@ -198,15 +198,18 @@ test.describe('list keyboard selection', () => {
     const before = await readDoc(page)
     const copied = await fireClipboard(page, 'copy')
     expect((copied.text || '').length, JSON.stringify(copied.text)).toBeGreaterThan(0)
+    const beforeBlocks = await readBlocks(page)
     await page.keyboard.press('Z')
     await waitForStable(page)
     const after = await readDoc(page)
+    const blocks = await readBlocks(page)
     const ov = await selectionState(page)
     // The selected content is deleted and replaced by a single character.
     expect(ov.count, JSON.stringify(ov)).toBe(0)
-    // The selected content is deleted (length shrinks), replaced by one char.
     expect(after.length, `${before.length} -> ${after.length}`).toBeLessThan(before.length - 5)
     expect((after.match(/Z/g) || []).length).toBe(1)
+    // Block count decreased by at least 1 (quote + list merged into one).
+    expect(blocks.length).toBeLessThan(beforeBlocks.length)
     expect(errors).toEqual([])
   })
 })
