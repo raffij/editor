@@ -44,8 +44,8 @@ The embed API accepts `initialBlocks`, controlled `value`, `onChange`, `onSave`,
 ## Regression tests
 
 The cross-block selection logic is engine-fragile by design (native selection within a block,
-an overlay across blocks), so the behavior is pinned down by end-to-end suites that run against
-the dev server in both Chromium and WebKit:
+an overlay across blocks), so the behavior is pinned down by end-to-end suites that run in both
+Chromium and WebKit:
 
 ```bash
 npm install
@@ -59,8 +59,17 @@ splitting and block-merge via synthetic `beforeinput`, iOS shift+backspace keydo
 full split/merge permutation matrix for list blocks (enter on empty/mid/start items breaks out
 of the list in place; backspacing a non-list block into a list folds it into the first item),
 and the rule that
-highlights never bleed into the 40px control gutter on the left of each block. A CI workflow
-(`.github/workflows/e2e.yml`) runs them on every pull request.
+highlights never bleed into the 40px control gutter on the left of each block.
+
+The suites run fully in parallel (each test seeds its own page), and waits are event-driven
+rather than fixed sleeps. Locally they run against the Vite dev server; on CI they run against a
+pre-built bundle served by `vite preview`, with `npm` and the Playwright browser downloads
+cached between runs. A CI workflow (`.github/workflows/e2e.yml`) runs them on every pull request
+and push to `main`:
+
+```bash
+npm run test:e2e:ci   # vite build && playwright test (same as CI)
+```
 
 One suite (`e2e/drag-during.spec.js`) samples the live highlight *while the mouse is still down*,
 which headless Chromium cannot do, so it is opt-in and needs a display:

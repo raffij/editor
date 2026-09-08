@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors } from './_helpers.js'
+import { openApp, collectPageErrors, waitForStable } from './_helpers.js'
 
 // List block split (Enter) and merge (Backspace) permutations. Each test seeds
 // a controlled document via localStorage (the workspace demo reads
@@ -91,11 +91,11 @@ const caretAtLiEnd = (page, row, liIndex) =>
 
 const pressEnter = async (page) => {
   await page.keyboard.press('Enter')
-  await page.waitForTimeout(400)
+  await waitForStable(page)
 }
 const pressBackspace = async (page) => {
   await page.keyboard.press('Backspace')
-  await page.waitForTimeout(400)
+  await waitForStable(page)
 }
 
 const summarize = (m) => m.map((b) => `${b.type}[${b.liTexts.join('|')}](text=${b.text})`).join(' → ')

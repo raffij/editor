@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, selectionState, coords } from './_helpers.js'
+import { openApp, selectionState, coords, waitForStable } from './_helpers.js'
 
 // Live highlighting DURING a drag, sampled while the mouse is still down.
 // Headless Chromium cannot extend a live native drag selection, so this spec
@@ -11,10 +11,10 @@ const midState = async (page, points) => {
   await page.mouse.move(points[0].x, points[0].y)
   await page.mouse.down()
   await page.mouse.move(points[1].x, points[1].y, { steps: 3 })
-  await page.waitForTimeout(120)
+  await waitForStable(page)
   const mid = await selectionState(page)
   await page.mouse.up()
-  await page.waitForTimeout(200)
+  await waitForStable(page)
   const end = await selectionState(page)
   return { mid, end }
 }
@@ -65,10 +65,10 @@ test.describe('during-drag live highlighting (headed)', () => {
     await page.mouse.down()
     await page.mouse.move(b.x, b.y, { steps: 6 })
     await page.mouse.move(c.x, c.y, { steps: 5 })
-    await page.waitForTimeout(120)
+    await waitForStable(page)
     const mid = await selectionState(page)
     await page.mouse.up()
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const end = await selectionState(page)
     expect(mid.collapsed, JSON.stringify(mid)).toBe(false)
     expect(mid.anchorBlock, JSON.stringify(mid)).toBe('intro')
