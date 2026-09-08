@@ -208,8 +208,12 @@ test.describe('list keyboard selection', () => {
     expect(ov.count, JSON.stringify(ov)).toBe(0)
     expect(after.length, `${before.length} -> ${after.length}`).toBeLessThan(before.length - 5)
     expect((after.match(/Z/g) || []).length).toBe(1)
-    // Block count decreased by at least 1 (quote + list merged into one).
-    expect(blocks.length).toBeLessThan(beforeBlocks.length)
+    // Only the list line the selection reached folds into the quote; the
+    // untouched items stay a list. Block count is unchanged, but the list has
+    // lost at least the merged item.
+    const liAfter = await page.evaluate(() => document.querySelectorAll('.block-content li').length)
+    expect(liAfter, JSON.stringify(blocks)).toBeLessThan(3)
+    expect(blocks.length).toBe(beforeBlocks.length)
     expect(errors).toEqual([])
   })
 })
