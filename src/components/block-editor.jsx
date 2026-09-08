@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useRef } from 'react'
 import { beginBlockDragSelection, handleArrowNavigation, handleCrossBlockEditKey, isCaretAtBlockStart } from '../logic/caret-navigation'
-import { blockTagName, cleanBlockHtml, cleanElement, emptyBlockHtml, isListType, typeMeta } from '../logic/document-model'
+import { blockTagName, cleanBlockHtml, cleanElement, emptyBlockHtml, hasReadableText, isListType, typeMeta } from '../logic/document-model'
 import { Icon } from './editor-controls'
 
 function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selectionAnchorRef }) {
@@ -21,11 +21,25 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
       else listItem = selection.anchorNode?.parentElement?.closest('li')
       if (listItem && listItem.textContent.trim()) return false
 
-      const listClone = ref.current.cloneNode(true)
       const sourceItems = Array.from(ref.current.querySelectorAll('li'))
       const itemIndex = sourceItems.indexOf(listItem)
-      if (itemIndex >= 0) listClone.querySelectorAll('li')[itemIndex]?.remove()
-      onSplit(cleanBlockHtml(listClone.innerHTML), '')
+      if (itemIndex < 0) return false
+
+      // Enter on an empty item breaks out of the list in place:
+      //   - items before the empty one stay in the current list block,
+      //   - the empty item becomes an empty paragraph at that position,
+      //   - items after it continue as a new list block (when the empty item
+      //     had items below it).
+      // With no items before, the current block itself converts to the
+      // paragraph instead of leaving an empty list behind.
+      const beforeHtml = cleanBlockHtml(sourceItems.slice(0, itemIndex).map((li) => li.outerHTML).join(''))
+      const afterHtml = cleanBlockHtml(sourceItems.slice(itemIndex + 1).map((li) => li.outerHTML).join(''))
+      const beforeEmpty = !hasReadableText(beforeHtml)
+      onSplit(beforeHtml, afterHtml, {
+        currentType: beforeEmpty ? 'paragraph' : block.type,
+        insertParagraph: !beforeEmpty,
+        afterType: sourceItems.length - itemIndex - 1 > 0 ? block.type : null,
+      })
       return true
     }
 

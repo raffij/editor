@@ -55,7 +55,9 @@ npm run test:e2e
 
 The suites cover vertical navigation, list keyboard selection, mouse drags (forward, backward,
 cross-block, shrink-back), copy/cut/type/backspace over cross-block selections, mobile
-splitting and block-merge via synthetic `beforeinput`, and the rule that
+splitting and block-merge via synthetic `beforeinput`, a full split/merge permutation matrix
+for list blocks (enter on empty/mid/start items breaks out of the list in place; backspacing a
+non-list block into a list folds it into the first item), and the rule that
 highlights never bleed into the 40px control gutter on the left of each block. A CI workflow
 (`.github/workflows/e2e.yml`) runs them on every pull request.
 
