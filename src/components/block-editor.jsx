@@ -58,7 +58,11 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
   }
 
   const mergeAtStart = (event) => {
-    if (event.key !== 'Backspace' || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return
+    // iOS reports shiftKey=true on a plain Backspace at the first character of
+    // a block, so don't exclude shift here — the isCaretAtBlockStart + collapsed
+    // checks below already guarantee this is a plain backspace at the block
+    // start, where shift adds no distinct meaning. Keep the real modifiers out.
+    if (event.key !== 'Backspace' || event.altKey || event.metaKey || event.ctrlKey) return
     if (performMergeAtStart()) event.preventDefault()
   }
 
