@@ -149,6 +149,13 @@ export function listItemsAsInlineHtml(html) {
   return Array.from(container.querySelectorAll('li')).map((item) => item.innerHTML).join('<br>')
 }
 
+// Number of <li> items in a list block's html.
+export function countListItems(html) {
+  const container = document.createElement('div')
+  container.innerHTML = html || ''
+  return container.querySelectorAll('li').length
+}
+
 export function mergeBlockContent(previous, current) {
   if (previous.type.includes('list') && current.type.includes('list')) return `${previous.html || ''}${current.html || ''}`
   if (previous.type.includes('list')) return `${previous.html || ''}<li>${current.html || ''}</li>`

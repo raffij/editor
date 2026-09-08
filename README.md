@@ -65,7 +65,9 @@ cross-block, shrink-back), copy/cut/type/backspace over cross-block selections, 
 splitting and block-merge via synthetic `beforeinput`, iOS shift+backspace keydown merging, a
 full split/merge permutation matrix for list blocks (enter on empty/mid/start items breaks out
 of the list in place; backspacing at the start of a list merges it into the block above as
-text, keeping that block's type), and the rule that
+text, keeping that block's type; backspacing at the start of a paragraph joins it into the
+previous block with the caret placed at the junction — the start of the joined item, even
+when the paragraph carries spans/<br> and the target list has empty items), and the rule that
 highlights never bleed into the 40px control gutter on the left of each block.
 
 The suites run fully in parallel (each test seeds its own page), and waits are event-driven

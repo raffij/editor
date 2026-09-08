@@ -673,3 +673,34 @@ export function focusBlockAtTextOffset(id, offset, attempt = 0) {
 export function scheduleCaretAtTextOffset(id, offset) {
   requestAnimationFrame(() => requestAnimationFrame(() => focusBlockAtTextOffset(id, offset)))
 }
+
+// Place the caret at the start of a specific list item (0-based index). Used
+// after a merge joins a paragraph into a list as a new item: the caret should
+// land at the start of that joined item's text (e.g. the start of "kkkk"), not
+// at a numeric text offset that the contenteditable DOM (spans, <br>, empty
+// items) can shift or swallow.
+export function scheduleCaretAtStartOfListItem(id, itemIndex, attempt = 0) {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const element = document.querySelector(`[data-block-id="${id}"]`)
+    if (!element) {
+      if (attempt < 4) scheduleCaretAtStartOfListItem(id, itemIndex, attempt + 1)
+      return
+    }
+    const items = element.querySelectorAll('li')
+    const li = items[itemIndex] || items[items.length - 1]
+    if (!li) {
+      element.focus()
+      return
+    }
+    element.focus()
+    const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT)
+    const firstText = walker.nextNode()
+    const point = firstText ? { node: firstText, offset: 0 } : { node: li, offset: 0 }
+    const range = document.createRange()
+    range.setStart(point.node, point.offset)
+    range.collapse(true)
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }))
+}
