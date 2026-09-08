@@ -486,17 +486,13 @@ export function deleteCrossBlockSelection(blocks) {
         break
       }
       if (remaining === node.textContent.length) {
-        const nextNode = walker.nextNode()
-        if (nextNode) {
-          const range = document.createRange()
-          range.setStart(nextNode, 0)
-          const textNodes = [...document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)]
-          const lastNode = textNodes[textNodes.length - 1]
-          if (lastNode) {
-            range.setEnd(lastNode, lastNode.textContent.length)
-            range.deleteContents()
-          }
-        }
+        // The selection starts exactly at the end of this text node (a
+        // boundary — e.g. between two list items or at the end of a span).
+        // Delete everything in the block from here to the end.
+        const range = document.createRange()
+        range.setStartAfter(node)
+        range.setEnd(tmp, tmp.childNodes.length)
+        range.deleteContents()
         break
       }
       remaining -= node.textContent.length

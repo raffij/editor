@@ -62,7 +62,8 @@ npm run test:e2e
 ```
 
 The suites cover vertical navigation, list keyboard selection, mouse drags (forward, backward,
-cross-block, shrink-back), copy/cut/type/backspace over cross-block selections, mobile
+cross-block, shrink-back), copy/cut/type over cross-block selections, backspace/delete over
+cross-block selections removing the whole selected range (every list item included), mobile
 splitting and block-merge via synthetic `beforeinput`, iOS shift+backspace keydown merging, a
 full split/merge permutation matrix for list blocks (enter on empty/mid/start items breaks out
 of the list in place; backspacing at the start of a list merges it into the block above as
