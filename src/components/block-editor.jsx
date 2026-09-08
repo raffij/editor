@@ -10,28 +10,25 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
   const Tag = blockTagName(block.type)
   const content = block.html || emptyBlockHtml(block.type)
 
-  const splitAtCaret = (event) => {
-    if (event.key !== 'Enter' || event.shiftKey) return
+  const performSplit = () => {
     const selection = window.getSelection()
-    if (!selection?.rangeCount || !ref.current?.contains(selection.anchorNode)) return
+    if (!selection?.rangeCount || !ref.current?.contains(selection.anchorNode)) return false
 
     const range = selection.getRangeAt(0)
     if (isListType(block.type)) {
       let listItem = null
       if (selection.anchorNode?.nodeType === Node.ELEMENT_NODE) listItem = selection.anchorNode.closest('li')
       else listItem = selection.anchorNode?.parentElement?.closest('li')
-      if (listItem && listItem.textContent.trim()) return
+      if (listItem && listItem.textContent.trim()) return false
 
-      event.preventDefault()
       const listClone = ref.current.cloneNode(true)
       const sourceItems = Array.from(ref.current.querySelectorAll('li'))
       const itemIndex = sourceItems.indexOf(listItem)
       if (itemIndex >= 0) listClone.querySelectorAll('li')[itemIndex]?.remove()
       onSplit(cleanBlockHtml(listClone.innerHTML), '')
-      return
+      return true
     }
 
-    event.preventDefault()
     const beforeRange = document.createRange()
     beforeRange.selectNodeContents(ref.current)
     beforeRange.setEnd(range.startContainer, range.startOffset)
@@ -43,6 +40,12 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
     before.appendChild(beforeRange.cloneContents())
     after.appendChild(afterRange.cloneContents())
     onSplit(cleanBlockHtml(before.innerHTML), cleanBlockHtml(after.innerHTML))
+    return true
+  }
+
+  const splitAtCaret = (event) => {
+    if (event.key !== 'Enter' || event.shiftKey) return
+    if (performSplit()) event.preventDefault()
   }
 
   const mergeAtStart = (event) => {
@@ -64,6 +67,19 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
     lastHtmlRef.current = cleanedContent
     lastTypeRef.current = block.type
   }, [block.type, content])
+
+  // iOS/Android software keyboards fire beforeinput instead of keydown for Enter
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const handleBeforeInput = (event) => {
+      if (event.inputType === 'insertParagraph') {
+        if (performSplit()) event.preventDefault()
+      }
+    }
+    el.addEventListener('beforeinput', handleBeforeInput)
+    return () => el.removeEventListener('beforeinput', handleBeforeInput)
+  }, [block.type])
 
   return (
     <Tag

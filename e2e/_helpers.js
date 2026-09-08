@@ -156,6 +156,17 @@ export const readBlocks = (page) =>
     [...document.querySelectorAll('.block-row .block-content')].map((el) => ({ id: el.dataset.blockId, text: el.textContent || '' })),
   )
 
+// Synthetic beforeinput on a block's contenteditable. iOS/Android software
+// keyboards fire beforeinput with inputType 'insertParagraph' (not a keydown)
+// for Enter, so this exercises the mobile split path directly.
+export const fireInsertParagraph = (page, column = 1) =>
+  page.evaluate((col) => {
+    const el = document.querySelector(`.block-row:nth-child(${col}) .block-content`)
+    const ev = new InputEvent('beforeinput', { inputType: 'insertParagraph', bubbles: true, cancelable: true })
+    const handled = el.dispatchEvent(ev) === false
+    return { handled }
+  }, column)
+
 // Synthetic ClipboardEvent on document; `defaultPrevented` means our handler ran.
 export const fireClipboard = (page, type) =>
   page.evaluate((t) => {
