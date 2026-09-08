@@ -66,4 +66,11 @@ npm run build
   history for style).
 - Use the GitHub CLI (`gh`) to create the PR against `main`, with a body that
   summarises the changes and any test coverage added.
+- **Auto-merge.** As the last step — after every commit is pushed and CI is
+  green — enable auto-merge so the PR lands without further action:
+  `gh pr merge <number> --auto --squash` (this repo only allows squash merges,
+  and auto-merge is only available to the initial author, so `gh` will error
+  otherwise). Remember the PR number from the `gh pr create` output. Do not
+  push more commits after arming it: the PR can merge mid-push, leaving the
+  extra commit orphaned on a dead branch.
 - Base the branch off the latest `main` before committing and pushing.

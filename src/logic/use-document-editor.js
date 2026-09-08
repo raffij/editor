@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { focusBlockStart, scheduleCaretAtTextOffset } from './caret-navigation'
-import { cleanBlockHtml, cleanElement, convertBlockContent, emptyBlockHtml, hasReadableText, htmlTextLength, makeBlockId, mergeBlockContent, starterBlocks } from './document-model'
+import { focusBlockStart, scheduleCaretAtStartOfListItem, scheduleCaretAtTextOffset } from './caret-navigation'
+import { cleanBlockHtml, cleanElement, convertBlockContent, countListItems, emptyBlockHtml, hasReadableText, htmlTextLength, makeBlockId, mergeBlockContent, starterBlocks } from './document-model'
 
 function cloneBlocks(blocks) {
   return blocks.map((block) => ({ ...block }))
@@ -45,6 +45,13 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
   }
 
   const updateBlock = (id, changes) => commitBlocks((current) => current.map((block) => block.id === id ? { ...block, ...changes, ...(changes.html != null ? { html: cleanBlockHtml(changes.html) } : {}) } : block))
+
+  // Replaces the whole block list with a new array (used for edits that span
+  // many blocks at once, e.g. deleting across a cross-block selection).
+  const replaceBlocks = (nextBlocks) => {
+    selectionAnchorRef.current = null
+    commitBlocks(nextBlocks)
+  }
 
   const addBlock = (type = 'paragraph', afterId = blocks[blocks.length - 1]?.id) => {
     const newBlock = { id: makeBlockId(type), type, html: emptyBlockHtml(type) }
@@ -114,14 +121,24 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
 
     const previous = blocks[index - 1]
     const current = { ...blocks[index], html: currentHtml }
-    const previousTextLength = htmlTextLength(previous.html)
+    const mergedHtml = mergeBlockContent(previous, current)
     selectionAnchorRef.current = null
     const next = [...blocks]
-    next[index - 1] = { ...previous, html: mergeBlockContent(previous, current) }
+    next[index - 1] = { ...previous, html: mergedHtml }
     next.splice(index, 1)
     commitBlocks(next)
     setActiveId(previous.id)
-    scheduleCaretAtTextOffset(previous.id, previousTextLength)
+    if (previous.type.includes('list')) {
+      // The paragraph merges in as the first new item of the (now larger)
+      // list: first item at index = the previous list's item count. Place the
+      // caret at the start of that joined item, structurally, so spans/<br>/
+      // empty items in the source don't shift where the caret lands.
+      scheduleCaretAtStartOfListItem(previous.id, countListItems(previous.html))
+    } else {
+      // Paragraph->paragraph or paragraph->list: single flattened text run, so
+      // the numeric junction (end of the previous text) is reliable.
+      scheduleCaretAtTextOffset(previous.id, htmlTextLength(previous.html))
+    }
   }
 
   const execFormat = (command, value = null) => {
@@ -188,6 +205,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     updateBlock,
     addBlock,
     deleteBlock,
+    replaceBlocks,
     moveBlock,
     splitBlock,
     mergeBlockAtStart,
@@ -198,6 +216,5 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     copyJson,
     resetDocument,
     convertBlockContent,
-    commitBlocks,
   }
 }

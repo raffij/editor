@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, selectRange, storedHtml, jsonPanelText } from './_helpers.js'
+import { openApp, collectPageErrors, selectRange, storedHtml, jsonPanelText, waitForStable } from './_helpers.js'
 
 // Block HTML must stay clean: no empty style attributes (<i style="">), no
 // execCommand toggle-off wrappers (<b style="font-weight: normal">), no inert
@@ -14,14 +14,14 @@ test.describe('block html cleaning', () => {
 
     await selectRange(page, 'intro', 8, 18)
     await page.getByRole('button', { name: 'Italic' }).click()
-    await page.waitForTimeout(120)
+    await waitForStable(page)
     let html = await storedHtml(page, 'intro')
     expect(html, JSON.stringify(html)).not.toContain('style')
     expect(html, JSON.stringify(html)).toMatch(/<(i|em)>idea, made<\/(i|em)>/)
 
     await selectRange(page, 'intro', 8, 18)
     await page.getByRole('button', { name: 'Italic' }).click()
-    await page.waitForTimeout(120)
+    await waitForStable(page)
     html = await storedHtml(page, 'intro')
     expect(html, JSON.stringify(html)).toBe(heading)
     expect(await jsonPanelText(page), 'json panel').not.toContain('style')
@@ -35,14 +35,14 @@ test.describe('block html cleaning', () => {
 
     await selectRange(page, 'lead', 5, 14)
     await page.getByRole('button', { name: 'Bold' }).click()
-    await page.waitForTimeout(120)
+    await waitForStable(page)
     let html = await storedHtml(page, 'lead')
     expect(html, JSON.stringify(html)).not.toContain('style')
     expect(html, JSON.stringify(html)).toMatch(/<(b|strong)>documents<\/(b|strong)>/)
 
     await selectRange(page, 'lead', 5, 14)
     await page.getByRole('button', { name: 'Bold' }).click()
-    await page.waitForTimeout(120)
+    await waitForStable(page)
     html = await storedHtml(page, 'lead')
     expect(html, JSON.stringify(html)).toBe(lead)
     expect(await jsonPanelText(page), 'json panel').not.toContain('style')
@@ -58,7 +58,7 @@ test.describe('block html cleaning', () => {
       el.innerHTML = html
       el.dispatchEvent(new Event('input', { bubbles: true }))
     }, dirty)
-    await page.waitForTimeout(120)
+    await waitForStable(page)
     const html = await storedHtml(page, 'closing')
     expect(html, JSON.stringify(html)).toBe('<i>dirty</i> off sp')
     expect(await jsonPanelText(page), 'json panel').not.toContain('style')

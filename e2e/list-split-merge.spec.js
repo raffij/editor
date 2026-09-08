@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, waitForStable } from './_helpers.js'
 
 // List block split (Enter) and merge (Backspace) permutations. Each test seeds
 // a controlled document via localStorage (the workspace demo reads
@@ -91,11 +91,11 @@ const caretAtLiEnd = (page, row, liIndex) =>
 
 const pressEnter = async (page) => {
   await page.keyboard.press('Enter')
-  await page.waitForTimeout(400)
+  await waitForStable(page)
 }
 const pressBackspace = async (page) => {
   await page.keyboard.press('Backspace')
-  await page.waitForTimeout(400)
+  await waitForStable(page)
 }
 
 const summarize = (m) => m.map((b) => `${b.type}[${b.liTexts.join('|')}](text=${b.text})`).join(' → ')
@@ -258,7 +258,42 @@ test.describe('list merge permutations (Backspace)', () => {
     expect(errors).toEqual([])
   })
 
-  test('M5: Backspace at start of a text paragraph after a list makes it the last item', async ({ page }) => {
+  test('M10: Backspace merges a span-wrapped paragraph with a trailing <br> into a list whose last item is empty; caret lands at the START of the joined item, not at the end of the previous item', async ({ page }) => {
+    const errors = collectPageErrors(page)
+    const listHtml = '<li>Start with the point</li><li>Give each thought room to breathe</li><li>Make the next step obvious</li><li><br></li>'
+    await openDoc(page, [
+      { id: NID(), type: 'bulleted-list', html: listHtml },
+      { id: NID(), type: 'paragraph', html: '<span style="font-family: var(--serif);">kkkk</span><br>' },
+    ])
+    await setCaretPlain(page, 2, 0)
+    await pressBackspace(page)
+    const m = await readModel(page)
+    expect(m.length, JSON.stringify(m)).toBe(1)
+    expect(m[0].liTexts, JSON.stringify(m)).toEqual(['Start with the point', 'Give each thought room to breathe', 'Make the next step obvious', '', 'kkkk'])
+    // Caret must sit at the start of "kkkk" inside the newly joined final item,
+    // not at the end of "Make the next step obvious".
+    const caret = await page.evaluate(() => {
+      const merged = document.querySelector('.block-row:nth-child(1) .block-content')
+      const sel = window.getSelection()
+      const node = sel.anchorNode
+      if (!node) return null
+      const li = node.nodeType === 3 ? node.parentElement.closest('li') : null
+      if (!li) return null
+      const items = [...merged.querySelectorAll('li')]
+      return {
+        liIndex: items.indexOf(li),
+        atStart: sel.anchorNode.nodeType === 3 && sel.anchorOffset === 0,
+        text: sel.anchorNode.textContent,
+      }
+    })
+    expect(caret, JSON.stringify(caret)).not.toBeNull()
+    expect(caret.liIndex, JSON.stringify(caret)).toBe(4)
+    expect(caret.atStart, JSON.stringify(caret)).toBe(true)
+    expect(caret.text, JSON.stringify(caret)).toBe('kkkk')
+    expect(errors).toEqual([])
+  })
+
+  test('M5: Backspace at start of a text paragraph after a list makes it the last item, caret lands at the junction (start of the merged item)', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openDoc(page, [LIST('bulleted-list', ['A', 'B']), P({ html: 'Tail' })])
     await setCaretPlain(page, 2, 0)
@@ -266,6 +301,12 @@ test.describe('list merge permutations (Backspace)', () => {
     const m = await readModel(page)
     expect(summarize(m), JSON.stringify(m)).toBe('bulleted-list[A|B|Tail](text=ABTail)')
     expect(m.length, JSON.stringify(m)).toBe(1)
+    const sel = await selectionState(page)
+    // Caret must land at the junction — the start of the joined paragraph text
+    // (offset = length of the list's pre-merge text), matching how a plain
+    // paragraph merge behaves, not at the end of the merged block.
+    expect(sel.collapsed, JSON.stringify(sel)).toBe(true)
+    expect(sel.anchorOff, JSON.stringify(sel)).toBe('AB'.length)
     expect(errors).toEqual([])
   })
 

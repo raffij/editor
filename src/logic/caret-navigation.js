@@ -1,4 +1,4 @@
-import { cleanBlockHtml, htmlTextLength, mergeBlockContent } from './document-model'
+import { cleanBlockHtml, htmlTextLength } from './document-model'
 
 export function isCaretAtBlockStart(element, selection, node = selection.anchorNode, offset = selection.anchorOffset) {
   if (!node || (!element.contains(node) && node !== element)) return false
@@ -226,230 +226,6 @@ function selectionEdges(model) {
     : { start: model.focus, end: model.anchor }
 }
 
-// ---------------------------------------------------------------------------
-// Cross-block range deletion
-// ---------------------------------------------------------------------------
-
-// Split the single text node that contains `offset` (global text offset across
-// the container) at that offset, and return { beforeNode, afterNode } — the two
-// halves. Assumes `offset` is inside a text node. Also returns the walker.
-function splitTextAtOffset(container, offset) {
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-  let remaining = offset
-  let textNode = walker.nextNode()
-  while (textNode && remaining > textNode.textContent.length) {
-    remaining -= textNode.textContent.length
-    textNode = walker.nextNode()
-  }
-  if (!textNode) return { beforeNode: null, afterNode: null, atBoundary: true, boundaryNode: null }
-  if (remaining === textNode.textContent.length) {
-    return { beforeNode: textNode, afterNode: textNode.nextSibling, atBoundary: true, boundaryNode: textNode }
-  }
-  const afterNode = textNode.splitText(remaining)
-  return { beforeNode: textNode, afterNode, atBoundary: false, boundaryNode: textNode }
-}
-
-// Return the part of `html`'s text before `offset` as a standalone fragment of
-// DOM nodes. List blocks are handled at the list-item granularity: only whole
-// items fully before the cut are kept (a straddling item is trimmed to its
-// before-cut portion); non-list content is trimmed by walking text nodes.
-function prefixFragment(html, offset) {
-  const container = document.createElement('div')
-  container.innerHTML = html || ''
-  const frag = document.createDocumentFragment()
-
-  if (offset >= container.textContent.length) {
-    while (container.firstChild) frag.appendChild(container.firstChild)
-    return frag
-  }
-  if (offset <= 0) return frag
-
-  const items = Array.from(container.querySelectorAll('li'))
-  if (items.length) {
-    let consumed = 0
-    for (const li of items) {
-      const len = li.textContent.length
-      if (consumed + len <= offset) {
-        frag.appendChild(li)
-        consumed += len
-      } else if (consumed < offset) {
-        // Item straddles the cut: keep only its before-cut part.
-        li.textContent = li.textContent.slice(0, offset - consumed)
-        frag.appendChild(li)
-        break
-      } else {
-        break
-      }
-    }
-    return frag
-  }
-
-  const { beforeNode, atBoundary, boundaryNode } = splitTextAtOffset(container, offset)
-  if (atBoundary) {
-    let node = boundaryNode
-    while (node) {
-      const next = node.nextSibling
-      node.parentNode.removeChild(node)
-      node = next
-    }
-  } else if (beforeNode) {
-    let node = beforeNode.nextSibling
-    while (node) {
-      const next = node.nextSibling
-      node.parentNode.removeChild(node)
-      node = next
-    }
-  }
-  while (container.firstChild) frag.appendChild(container.firstChild)
-  return frag
-}
-
-// Return the part of `html`'s text at/after `offset` as a fragment. Nodes
-// wholly before the cut are dropped; the node containing the cut keeps only its
-// after-cut portion. List blocks are handled at item granularity.
-function suffixFragment(html, offset) {
-  const container = document.createElement('div')
-  container.innerHTML = html || ''
-  const frag = document.createDocumentFragment()
-
-  if (offset >= container.textContent.length) return frag
-  if (offset <= 0) {
-    while (container.firstChild) frag.appendChild(container.firstChild)
-    return frag
-  }
-
-  const items = Array.from(container.querySelectorAll('li'))
-  if (items.length) {
-    let consumed = 0
-    let started = false
-    for (const li of items) {
-      const len = li.textContent.length
-      if (started) {
-        frag.appendChild(li)
-        continue
-      }
-      if (consumed + len <= offset) {
-        consumed += len
-      } else {
-        // First item at/after the cut: keep its after-cut part as an item.
-        li.textContent = li.textContent.slice(offset - consumed)
-        frag.appendChild(li)
-        started = true
-      }
-    }
-    return frag
-  }
-
-  const { beforeNode, atBoundary, boundaryNode } = splitTextAtOffset(container, offset)
-  if (atBoundary) {
-    let node = boundaryNode.previousSibling
-    while (node) {
-      const prev = node.previousSibling
-      node.parentNode.removeChild(node)
-      node = prev
-    }
-  } else if (beforeNode) {
-    let node = beforeNode.previousSibling
-    while (node) {
-      const prev = node.previousSibling
-      node.parentNode.removeChild(node)
-      node = prev
-    }
-  }
-  while (container.firstChild) frag.appendChild(container.firstChild)
-  return frag
-}
-
-// Remove the cross-block selection (the range between the selection edges) from
-// the document model. Returns { blocks, caretId, caretOffset } describing the
-// resulting document and where the caret should land, or null if nothing was
-// deleted. The returned `blocks` is the full new block list.
-export function deleteCrossBlockRange(blocks, model) {
-  if (!model) return null
-  const edges = selectionEdges(model)
-  if (!edges) return null
-  const { start, end } = edges
-
-  const startBlock = blocks.find((b) => b.id === start.id)
-  const endBlock = blocks.find((b) => b.id === end.id)
-  if (!startBlock || !endBlock) return null
-  if (start.offset === end.offset && start.id === end.id) return null
-
-  // Same-block selection: just delete the interior text.
-  if (start.id === end.id) {
-    const container = document.createElement('div')
-    container.innerHTML = startBlock.html || ''
-    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
-    let remaining = Math.max(start.offset, 0)
-    let startNode = walker.nextNode()
-    while (startNode && remaining > 0) {
-      const len = startNode.textContent.length
-      if (remaining < len) { startNode.splitText(remaining); break }
-      remaining -= len
-      startNode = walker.nextNode()
-    }
-    if (startNode && end.offset > start.offset) {
-      let endRemaining = end.offset - start.offset
-      let endNode = startNode
-      while (endNode && endRemaining > 0) {
-        const len = endNode.textContent.length
-        if (endRemaining < len) { endNode.splitText(endRemaining); break }
-        endRemaining -= len
-        endNode = walker.nextNode()
-      }
-      const range = document.createRange()
-      range.setStart(startNode, remaining)
-      if (endNode) range.setEnd(endNode, endRemaining); else range.setEndAfter(startNode)
-      range.deleteContents()
-    }
-    const updated = blocks.map((b) => b.id === startBlock.id ? { ...b, html: cleanBlockHtml(container.innerHTML) } : b)
-    return { blocks: updated, caretId: startBlock.id, caretOffset: Math.min(start.offset, end.offset) }
-  }
-
-  // Multi-block selection.
-  const startIndex = blocks.findIndex((b) => b.id === start.id)
-  const endIndex = blocks.findIndex((b) => b.id === end.id)
-
-  const startFrag = prefixFragment(startBlock.html || '', start.offset)
-  const endFrag = suffixFragment(endBlock.html || '', end.offset)
-  const serialize = (frag) => {
-    const out = document.createElement('div')
-    out.appendChild(frag.cloneNode(true))
-    return out.innerHTML
-  }
-  const startHtml = serialize(startFrag)
-  const endHtml = serialize(endFrag)
-
-  // Merge the surviving pieces (start prefix + end suffix) into a single block
-  // using the same list-aware merge the Backspace-at-start path uses, so list
-  // structure stays valid when lists straddle the cut. When one side is empty,
-  // the survivor is just the other side (avoids appending an empty <li>).
-  let mergedHtml
-  if (startHtml && endHtml) {
-    mergedHtml = mergeBlockContent(
-      { html: startHtml, type: startBlock.type },
-      { html: endHtml, type: endBlock.type },
-    )
-  } else {
-    mergedHtml = startHtml || endHtml
-  }
-
-  // Remove the middle + end blocks and keep the start block (with the merged
-  // survivors) in its original position. Keeping the start block guarantees at
-  // least one block survives even if the selection covered the whole document.
-  const deletedIds = new Set(blocks.slice(startIndex, endIndex + 1).map((b) => b.id))
-  const remaining = blocks.filter((b) => !deletedIds.has(b.id))
-  const survivor = { ...startBlock, html: cleanBlockHtml(mergedHtml) }
-  const next = [...remaining.slice(0, startIndex), survivor, ...remaining.slice(startIndex)]
-
-  return { blocks: next, caretId: startBlock.id, caretOffset: htmlTextLength(mergedHtml) }
-}
-
-let crossBlockDeleteHandler = null
-export function setCrossBlockDeleteHandler(handler) {
-  crossBlockDeleteHandler = handler
-}
-
 export function handleCrossBlockCopy(event) {
   if (!crossBlockModel) return false
   const text = crossBlockSelectionText()
@@ -620,12 +396,165 @@ export function setCrossBlockSplitHandler(handler) {
   crossBlockSplitHandler = handler
 }
 
+let crossBlockDeleteHandler = null
+export function setCrossBlockDeleteHandler(handler) {
+  crossBlockDeleteHandler = handler
+}
+
+// Deletes the content within a cross-block selection from the document model.
+// Returns an object with:
+//   - fromBlock, fromOffset: the (blockId, textOffset) at the selection start
+//   - updates: an array of { id, html } plain objects where `html === undefined`
+//     means the block should be removed entirely; otherwise `html` is the block's
+//     new innerHTML.
+// Returns null if the selection cannot be resolved.
+export function deleteCrossBlockSelection(blocks) {
+  if (!crossBlockModel) return null
+  const edges = selectionEdges(crossBlockModel)
+  if (!edges) return null
+  const { start, end } = edges
+
+  const blockElements = [...document.querySelectorAll('.document-canvas [data-block-id]')]
+  const startBlockIndex = blockElements.findIndex((el) => el.dataset.blockId === start.id)
+  const endBlockIndex = blockElements.findIndex((el) => el.dataset.blockId === end.id)
+  if (startBlockIndex < 0 || endBlockIndex < 0) return null
+
+  const updates = []
+  const fromBlock = start.id
+  const fromOffset = start.offset
+  const startBlockEl = blockElements[startBlockIndex]
+  const endBlockEl = blockElements[endBlockIndex]
+  const startBlockData = blocks.find((b) => b.id === start.id)
+  const endBlockData = blocks.find((b) => b.id === end.id)
+  if (!startBlockEl || !endBlockEl || !startBlockData || !endBlockData) return null
+
+  // Same block: delete the selected range within it.
+  if (start.id === end.id) {
+    const tmp = document.createElement('div')
+    tmp.innerHTML = startBlockEl.innerHTML
+    const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    let offset = 0
+    let startNode = null, startOff = 0, endNode = null, endOff = 0
+
+    while (node) {
+      const len = node.textContent.length
+      if (!startNode && start.offset <= offset + len) {
+        startNode = node
+        startOff = start.offset - offset
+      }
+      if (end.offset <= offset + len) {
+        endNode = node
+        endOff = end.offset - offset
+        break
+      }
+      offset += len
+      node = walker.nextNode()
+    }
+
+    if (startNode && endNode) {
+      const range = document.createRange()
+      range.setStart(startNode, startOff)
+      range.setEnd(endNode, endOff)
+      range.deleteContents()
+    }
+
+    updates.push({ id: start.id, html: cleanBlockHtml(tmp.innerHTML) })
+    return { fromBlock, fromOffset, updates }
+  }
+
+  // Cross-block: delete fully-selected blocks in the middle.
+  for (let i = startBlockIndex + 1; i < endBlockIndex; i++) {
+    updates.push({ id: blockElements[i].dataset.blockId })
+  }
+
+  // Start block: keep content before the selection start (or delete the block).
+  if (start.offset === 0) {
+    updates.push({ id: start.id })
+  } else {
+    const tmp = document.createElement('div')
+    tmp.innerHTML = startBlockEl.innerHTML
+    const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    let remaining = start.offset
+    while (node && remaining > 0) {
+      if (remaining < node.textContent.length) {
+        const range = document.createRange()
+        range.setStart(node, remaining)
+        range.setEnd(node, node.textContent.length)
+        range.deleteContents()
+        break
+      }
+      if (remaining === node.textContent.length) {
+        const nextNode = walker.nextNode()
+        if (nextNode) {
+          const range = document.createRange()
+          range.setStart(nextNode, 0)
+          const textNodes = [...document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)]
+          const lastNode = textNodes[textNodes.length - 1]
+          if (lastNode) {
+            range.setEnd(lastNode, lastNode.textContent.length)
+            range.deleteContents()
+          }
+        }
+        break
+      }
+      remaining -= node.textContent.length
+      node = walker.nextNode()
+    }
+    updates.push({ id: start.id, html: cleanBlockHtml(tmp.innerHTML) })
+  }
+
+  // End block: keep content after the selection end (or delete the block).
+  const endTextLen = htmlTextLength(endBlockData.html)
+  if (end.offset >= endTextLen) {
+    updates.push({ id: end.id })
+  } else {
+    const tmp = document.createElement('div')
+    tmp.innerHTML = endBlockEl.innerHTML
+    const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    let remaining = end.offset
+    while (node && remaining > 0) {
+      if (remaining < node.textContent.length) {
+        const range = document.createRange()
+        range.setStart(node, 0)
+        range.setEnd(node, remaining)
+        range.deleteContents()
+        break
+      }
+      if (remaining === node.textContent.length) {
+        const range = document.createRange()
+        range.setStart(tmp, 0)
+        range.setEnd(node, node.textContent.length)
+        range.deleteContents()
+        break
+      }
+      remaining -= node.textContent.length
+      node = walker.nextNode()
+    }
+    updates.push({ id: end.id, html: cleanBlockHtml(tmp.innerHTML) })
+  }
+
+  return { fromBlock, fromOffset, updates }
+}
+
+// Applies a cross-block selection deletion for Backspace/Delete/typing. Runs
+// the registered handler to update the React model; returns true if handled.
+export function applyCrossBlockDeletion(blocks, key) {
+  if (!crossBlockModel || !crossBlockDeleteHandler) return false
+  const deletion = deleteCrossBlockSelection(blocks)
+  clearCrossBlockSelection()
+  if (!deletion) return false
+  crossBlockDeleteHandler(deletion, key)
+  return true
+}
+
 // A key that would edit content (typing, Backspace, Delete, Enter) over a
-// cross-block selection collapses the selection to one edge first. This keeps
-// the browser from mutating several editing hosts at once — which would
-// half-apply the edit and then get reverted by React — and falls back to
-// ordinary single-block editing at that edge.
-export function handleCrossBlockEditKey(event) {
+// cross-block selection deletes the selected content first, then handles the
+// key. This keeps the browser from mutating several editing hosts at once —
+// which would half-apply the edit and then get reverted by React.
+export function handleCrossBlockEditKey(event, blocks) {
   if (event.metaKey || event.ctrlKey || event.altKey) return false
   const isDeletion = event.key === 'Backspace' || event.key === 'Delete'
   const isInsertion = event.key.length === 1 || event.key === 'Enter'
@@ -665,24 +594,18 @@ export function handleCrossBlockEditKey(event) {
     return true
   }
 
-  // Backspace / Delete over a cross-block selection: remove the selected range
-  // from the document model rather than collapsing and deleting one character.
-  if (isDeletion && crossBlockDeleteHandler) {
-    const result = deleteCrossBlockRange(crossBlockDeleteHandler._getBlocks(), crossBlockModel)
-    if (result) {
-      event.preventDefault()
-      clearCrossBlockSelection()
-      crossBlockDeleteHandler(result)
-      return true
-    }
+  // For Backspace, Delete, and character input: delete the selected content
+  // from the document model via the React handler, then prevent the browser
+  // from mutating several editing hosts at once.
+  if (applyCrossBlockDeletion(blocks, event.key)) {
+    event.preventDefault()
+    return true
   }
 
-  // Collapse to the selection start for Backspace (delete before the selection)
-  // and to the selection end for Delete/typing.
+  // Fallback when blocks data is unavailable: collapse to one edge.
   const collapseToStart = event.key === 'Backspace'
   const point = collapseToStart ? edges.start : edges.end
   const element = point ? document.querySelector(`[data-block-id="${point.id}"]`) : null
-  clearCrossBlockSelection()
   if (!element) return false
   element.focus({ preventScroll: true })
   const caret = textPointAtOffset(element, point.offset)
@@ -908,4 +831,35 @@ export function focusBlockAtTextOffset(id, offset, attempt = 0) {
 
 export function scheduleCaretAtTextOffset(id, offset) {
   requestAnimationFrame(() => requestAnimationFrame(() => focusBlockAtTextOffset(id, offset)))
+}
+
+// Place the caret at the start of a specific list item (0-based index). Used
+// after a merge joins a paragraph into a list as a new item: the caret should
+// land at the start of that joined item's text (e.g. the start of "kkkk"), not
+// at a numeric text offset that the contenteditable DOM (spans, <br>, empty
+// items) can shift or swallow.
+export function scheduleCaretAtStartOfListItem(id, itemIndex, attempt = 0) {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const element = document.querySelector(`[data-block-id="${id}"]`)
+    if (!element) {
+      if (attempt < 4) scheduleCaretAtStartOfListItem(id, itemIndex, attempt + 1)
+      return
+    }
+    const items = element.querySelectorAll('li')
+    const li = items[itemIndex] || items[items.length - 1]
+    if (!li) {
+      element.focus()
+      return
+    }
+    element.focus()
+    const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT)
+    const firstText = walker.nextNode()
+    const point = firstText ? { node: firstText, offset: 0 } : { node: li, offset: 0 }
+    const range = document.createRange()
+    range.setStart(point.node, point.offset)
+    range.collapse(true)
+    const selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }))
 }

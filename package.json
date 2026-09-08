@@ -9,6 +9,7 @@
     "build:embed": "vite build --mode embed",
     "preview": "vite preview",
     "test:e2e": "playwright test",
+    "test:e2e:ci": "vite build && playwright test",
     "test:e2e:headed": "EDITOR_E2E_HEADED=1 playwright test --project=chromium-headed --project=webkit-headed"
   },
   "dependencies": {

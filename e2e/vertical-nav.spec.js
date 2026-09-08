@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, selectionState, setCaret, readDoc, readBlocks, fireClipboard, fireInsertParagraph, fireDeleteBackward, fireShiftBackspaceKeydown, box, drag } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, setCaret, readDoc, readBlocks, fireClipboard, fireInsertParagraph, fireDeleteBackward, fireShiftBackspaceKeydown, box, drag, waitForStable } from './_helpers.js'
 
 // Vertical navigation, overwrite/copy/cut/split over cross-block selections,
 // and same-block native selection behaviors across both engines.
@@ -38,7 +38,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     expect(errors).toEqual([])
   })
 
-  test('g3: typing over the selection inserts exactly one char and clears the overlay', async ({ page }) => {
+  test('g3: typing over the selection deletes it and inserts the char', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before3 = await readDoc(page)
@@ -46,16 +46,26 @@ test.describe('vertical navigation + cross-block editing', () => {
     const p3 = await box(page, 4)
     await drag(page, f3, p3)
     await page.keyboard.press('Z')
-    await page.waitForTimeout(300)
+    await waitForStable(page)
     const after3 = await readDoc(page)
+    const blocks3 = await readBlocks(page)
     const ov3 = await selectionState(page)
     expect(ov3.count, JSON.stringify(ov3)).toBe(0)
-    expect(after3.length, `${before3.length} -> ${after3.length}`).toBe(before3.length + 1)
+    // The selected content is deleted (much shorter) rather than preserved.
+    expect(after3.length, `${before3.length} -> ${after3.length}`).toBeLessThan(before3.length / 2)
+    // The replacement char is present exactly once.
     expect((after3.match(/Z/g) || []).length).toBe(1)
+    // Fully-selected blocks are gone and the trimmed halves are merged.
+    const goneIds = blocks3.map((b) => b.id)
+    expect(goneIds.includes('lead')).toBe(false)
+    expect(goneIds.includes('quote')).toBe(false)
+    expect(goneIds.includes('principles')).toBe(false)
+    // The two surviving blocks are merged into one.
+    expect(blocks3.length).toBe(2)
     expect(errors).toEqual([])
   })
 
-  test('g4: backspace over the selection removes the whole selected range', async ({ page }) => {
+  test('g4: backspace over the selection deletes and merges blocks', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before4 = await readDoc(page)
@@ -63,18 +73,21 @@ test.describe('vertical navigation + cross-block editing', () => {
     const c4 = await box(page, 5)
     await drag(page, f4, c4)
     await page.keyboard.press('Backspace')
-    await page.waitForTimeout(300)
+    await waitForStable(page)
     const after4 = await readDoc(page)
+    const blocks4 = await readBlocks(page)
     const ov4 = await selectionState(page)
-    // The whole cross-block selection (intro -> closing, through the list) is
-    // removed, not just one character, and the result is not corrupted.
-    expect(after4.length, `${before4.length} -> ${after4.length}`).toBeLessThan(before4.length - 100)
-    expect(after4.length, `${before4.length} -> ${after4.length}`).toBeGreaterThan(0)
+    // The selection is deleted wholesale, not a single character.
+    expect(after4.length, `${before4.length} -> ${after4.length}`).toBeLessThan(before4.length / 2)
     expect(ov4.count, JSON.stringify(ov4)).toBe(0)
+    // All middle blocks gone, start+end merged into one.
+    expect(blocks4.length, JSON.stringify(blocks4.map((b) => b.id))).toBe(1)
+    // No empty or corrupted content.
+    expect(blocks4[0].text.length > 0).toBe(true)
     expect(errors).toEqual([])
   })
 
-  test('g5: delete over the selection removes the whole selected range', async ({ page }) => {
+  test('g5: delete over the selection deletes and merges blocks', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before5 = await readDoc(page)
@@ -82,12 +95,13 @@ test.describe('vertical navigation + cross-block editing', () => {
     const c5 = await box(page, 5)
     await drag(page, f5, c5)
     await page.keyboard.press('Delete')
-    await page.waitForTimeout(300)
+    await waitForStable(page)
     const after5 = await readDoc(page)
-    const ov5 = await selectionState(page)
-    expect(after5.length, `${before5.length} -> ${after5.length}`).toBeLessThan(before5.length - 100)
-    expect(after5.length, `${before5.length} -> ${after5.length}`).toBeGreaterThan(0)
-    expect(ov5.count, JSON.stringify(ov5)).toBe(0)
+    const blocks5 = await readBlocks(page)
+    // The selection is deleted wholesale, not a single character.
+    expect(after5.length, `${before5.length} -> ${after5.length}`).toBeLessThan(before5.length / 2)
+    // All middle blocks gone, start+end merged into one.
+    expect(blocks5.length).toBe(1)
     expect(errors).toEqual([])
   })
 
@@ -99,7 +113,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     const p6 = await box(page, 3)
     await drag(page, f6, p6)
     await page.keyboard.press('Enter')
-    await page.waitForTimeout(400)
+    await waitForStable(page)
     const blocksAfter6 = await readBlocks(page)
     const textBefore6 = blocksBefore6.map((b) => b.text).join('')
     const textAfter6 = blocksAfter6.map((b) => b.text).join('')
@@ -116,7 +130,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     await setCaret(page, 2, 20)
     const blocksBefore = await readBlocks(page)
     const res = await fireInsertParagraph(page, 2)
-    await page.waitForTimeout(400)
+    await waitForStable(page)
     const blocksAfter = await readBlocks(page)
     expect(res.handled, JSON.stringify(res)).toBe(true)
     expect(blocksAfter.length, `${blocksBefore.length} -> ${blocksAfter.length}`).toBe(blocksBefore.length + 1)
@@ -134,7 +148,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     await openApp(page)
     const blocksBefore = await readBlocks(page)
     const res = await fireDeleteBackward(page, 2)
-    await page.waitForTimeout(400)
+    await waitForStable(page)
     const blocksAfter = await readBlocks(page)
     expect(res.handled, JSON.stringify(res)).toBe(true)
     expect(blocksAfter.length, `${blocksBefore.length} -> ${blocksAfter.length}`).toBe(blocksBefore.length - 1)
@@ -149,7 +163,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     await openApp(page)
     const blocksBefore = await readBlocks(page)
     const res = await fireShiftBackspaceKeydown(page, 2)
-    await page.waitForTimeout(400)
+    await waitForStable(page)
     const blocksAfter = await readBlocks(page)
     expect(res.handled, JSON.stringify(res)).toBe(true)
     expect(blocksAfter.length, `${blocksBefore.length} -> ${blocksAfter.length}`).toBe(blocksBefore.length - 1)
@@ -164,7 +178,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     const c7 = await box(page, 5)
     await drag(page, f7, c7)
     await page.mouse.click(400, 950)
-    await page.waitForTimeout(150)
+    await waitForStable(page)
     const ov7 = await selectionState(page)
     expect(ov7.count, JSON.stringify(ov7)).toBe(0)
     expect(errors).toEqual([])
@@ -176,7 +190,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     await setCaret(page, 1, 9999)
     const leadLen = await page.evaluate(() => document.querySelector('.block-row:nth-child(2) .block-content').textContent.length)
     await page.keyboard.press('ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const g8 = await selectionState(page)
     expect(g8.focusBlock, JSON.stringify(g8)).toBe('lead')
     expect(g8.focusOffset > 3 && g8.focusOffset < leadLen - 1, `offset=${g8.focusOffset} leadLen=${leadLen}`).toBe(true)
@@ -189,12 +203,12 @@ test.describe('vertical navigation + cross-block editing', () => {
     await openApp(page)
     await setCaret(page, 2, 20)
     await page.keyboard.press('ArrowDown')
-    await page.waitForTimeout(150)
+    await waitForStable(page)
     const g9a = await selectionState(page)
     expect(g9a.focusBlock, JSON.stringify(g9a)).toBe('lead')
     expect(g9a.focusOffset > 20, `offset=${g9a.focusOffset}`).toBe(true)
     await page.keyboard.press('ArrowDown')
-    await page.waitForTimeout(150)
+    await waitForStable(page)
     const g9b = await selectionState(page)
     expect(g9b.focusBlock, JSON.stringify(g9b)).toBe('quote')
     expect(g9b.focusOffset > 3, JSON.stringify(g9b)).toBe(true)
@@ -206,7 +220,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     await openApp(page)
     await setCaret(page, 1, 9999)
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const g10a = await selectionState(page)
     // Anchor at intro-end, focus on lead@0: an empty selection that still
     // paints the landing line — and never the control gutter.
@@ -216,7 +230,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     expect(g10a.bleed, JSON.stringify(g10a)).toBe(false)
     await setCaret(page, 2, 9999)
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const g10b = await selectionState(page)
     expect(g10b.focusBlock, JSON.stringify(g10b)).toBe('quote')
     expect(g10b.bleed, JSON.stringify(g10b)).toBe(false)
@@ -228,7 +242,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     await openApp(page)
     await setCaret(page, 2, 5)
     await page.keyboard.press('ArrowUp')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const g11 = await selectionState(page)
     expect(g11.focusBlock, JSON.stringify(g11)).toBe('intro')
     expect(errors).toEqual([])
@@ -239,7 +253,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     await openApp(page)
     const l12 = await box(page, 2)
     await page.mouse.dblclick(l12.x + 120, l12.y + l12.height / 2)
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const g12 = await selectionState(page)
     expect(g12.collapsed, JSON.stringify(g12)).toBe(false)
     expect(g12.anchorBlock, JSON.stringify(g12)).toBe('lead')

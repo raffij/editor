@@ -10,10 +10,22 @@
 // painted by the `.cross-selection-overlay` spans. A highlight must cover the
 // text column only — never the 40px control gutter on the left of each block.
 
+// Lets the browser settle after an edit/navigation action: waits for React's
+// post-event render to be committed (a couple of animation frames) plus a small
+// floor for selectionchange/input handlers to run. Replaces coarse fixed sleeps
+// (the old 120-400ms waitForTimeout calls) so the suites run ~an order of
+// magnitude less wall-clock on CI.
+export const waitForStable = (page) =>
+  page.evaluate(() => new Promise((resolve) => {
+    let frames = 0
+    const tick = () => (++frames >= 3 ? resolve() : requestAnimationFrame(tick))
+    requestAnimationFrame(tick)
+  })).then(() => page.waitForTimeout(40))
+
 export async function openApp(page) {
   await page.goto('/')
   await page.waitForSelector('.block-row')
-  await page.waitForTimeout(400)
+  await waitForStable(page)
 }
 
 export function collectPageErrors(page) {
@@ -226,7 +238,7 @@ export async function drag(page, fromBox, toBox, steps = 10) {
   await page.mouse.down()
   await page.mouse.move(toBox.x + Math.min(80, toBox.width - 10), toBox.y + toBox.height / 2, { steps })
   await page.mouse.up()
-  await page.waitForTimeout(150)
+  await waitForStable(page)
 }
 
 export async function dragPoints(page, points, steps = 8) {
@@ -234,6 +246,6 @@ export async function dragPoints(page, points, steps = 8) {
   await page.mouse.down()
   for (let i = 1; i < points.length; i++) await page.mouse.move(points[i].x, points[i].y, { steps })
   await page.mouse.up()
-  await page.waitForTimeout(250)
+  await waitForStable(page)
   return selectionState(page)
 }

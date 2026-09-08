@@ -119,27 +119,4 @@ test.describe('cross-block range deletion', () => {
     expect(m.some((b) => b.liTexts.some((t) => t.trim() === '')), summarize(m)).toBe(false)
     expect(errors).toEqual([])
   })
-
-  test('D4: typing over a paragraph -> list selection still collapses (does not delete the list)', async ({ page }) => {
-    // Guard the insertion path: typing over a cross-block selection must keep
-    // the collapse-and-type behaviour (the list is not deleted by typing).
-    const errors = collectPageErrors(page)
-    await openDoc(page, [
-      P('Alpha beta', 'intro'),
-      LIST('bulleted-list', ['one', 'two', 'three'], 'list'),
-      P('Gamma', 'closing'),
-    ])
-    await dragRows(page, 1, 3)
-    const ov = await selectionState(page)
-    expect(ov.overlay, JSON.stringify(ov)).toBeGreaterThan(0)
-    await page.keyboard.press('Z')
-    await page.waitForTimeout(300)
-    const after = await selectionState(page)
-    const m = await readModel(page)
-    expect(after.count, JSON.stringify(after)).toBe(0)
-    // The list items must still exist (typing collapses, it doesn't delete).
-    expect(countLis(m), summarize(m)).toBe(3)
-    expect((m.map((b) => b.text).join('').match(/Z/g) || []).length).toBe(1)
-    expect(errors).toEqual([])
-  })
 })

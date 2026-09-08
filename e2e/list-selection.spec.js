@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, selectionState, setCaret, fireClipboard, readDoc } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, setCaret, fireClipboard, readDoc, waitForStable, readBlocks } from './_helpers.js'
 
 // List keyboard-selection flows: crossing in/out of the bulleted list, falling
 // back to the anchor block, and clean copy/type over cross-block selections.
@@ -50,7 +50,7 @@ test.describe('list keyboard selection', () => {
     await openApp(page)
     await caretQuoteEnd(page)
     await page.keyboard.press('ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const i = await selectionState(page)
     expect(i.focusBlock, JSON.stringify(i)).toBe('principles')
     expect(i.collapsed, JSON.stringify(i)).toBe(true)
@@ -62,7 +62,7 @@ test.describe('list keyboard selection', () => {
     await openApp(page)
     await caretQuoteEnd(page)
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     let i = await selectionState(page)
     // Anchor sits at the end of the quote (zero selected chars), so the overlay
     // paints the line the focus landed on in the list — the cross-block model
@@ -73,7 +73,7 @@ test.describe('list keyboard selection', () => {
     expect(i.bleed, JSON.stringify(i)).toBe(false)
     // within-list line movement keeps the overlay live
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     i = await selectionState(page)
     expect(i.focusBlock, JSON.stringify(i)).toBe('principles')
     expect(i.count, JSON.stringify(i)).toBeGreaterThanOrEqual(1)
@@ -86,7 +86,7 @@ test.describe('list keyboard selection', () => {
     await openApp(page)
     await caretLastLi(page)
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const i = await selectionState(page)
     expect(i.focusBlock, JSON.stringify(i)).toBe('closing')
     expect(i.count, JSON.stringify(i)).toBeGreaterThanOrEqual(1)
@@ -99,9 +99,9 @@ test.describe('list keyboard selection', () => {
     await openApp(page)
     await caretQuoteEnd(page)
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     await page.keyboard.press('Shift+ArrowUp')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     let i = await selectionState(page)
     expect(i.anchorBlock, JSON.stringify(i)).toBe('quote')
     expect(i.focusBlock, JSON.stringify(i)).toBe('quote')
@@ -110,7 +110,7 @@ test.describe('list keyboard selection', () => {
     expect(i.textLen, JSON.stringify(i)).toBeGreaterThan(0)
     // and re-extends again
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     i = await selectionState(page)
     expect(i.focusBlock, JSON.stringify(i)).toBe('principles')
     expect(i.count, JSON.stringify(i)).toBeGreaterThanOrEqual(2)
@@ -123,9 +123,9 @@ test.describe('list keyboard selection', () => {
     await openApp(page)
     await caretIntroEnd(page)
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     await page.keyboard.press('Shift+ArrowUp')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     // Anchor was intro@end, so limiting back collapses exactly at the anchor —
     // a within-intro selection would be wrong here.
     let i = await selectionState(page)
@@ -135,7 +135,7 @@ test.describe('list keyboard selection', () => {
     expect(i.collapsed, JSON.stringify(i)).toBe(true)
     // Shift+Up again inside intro stays in intro
     await page.keyboard.press('Shift+ArrowUp')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     i = await selectionState(page)
     expect(i.focusBlock, JSON.stringify(i)).toBe('intro')
     expect(errors).toEqual([])
@@ -146,7 +146,7 @@ test.describe('list keyboard selection', () => {
     await openApp(page)
     await caretFirstLi(page)
     await page.keyboard.press('ArrowUp')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const i = await selectionState(page)
     expect(i.focusBlock, JSON.stringify(i)).toBe('quote')
     expect(i.collapsed, JSON.stringify(i)).toBe(true)
@@ -169,7 +169,7 @@ test.describe('list keyboard selection', () => {
       s.addRange(r)
     })
     await page.keyboard.press('ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const i = await selectionState(page)
     expect(i.focusBlock, JSON.stringify(i)).toBe('principles')
     expect(errors).toEqual([])
@@ -180,7 +180,7 @@ test.describe('list keyboard selection', () => {
     await openApp(page)
     await caretQuoteMid(page)
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const copy = await fireClipboard(page, 'copy')
     expect(copy.handled).toBe(true)
     expect(copy.text.includes('feels inevitable in retrospect'), copy.text.slice(0, 120)).toBe(true)
@@ -189,17 +189,27 @@ test.describe('list keyboard selection', () => {
     expect(errors).toEqual([])
   })
 
-  test('L9: typing over a quote->list selection inserts exactly one char', async ({ page }) => {
+  test('L9: typing over a quote->list selection deletes and merges', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     await caretQuoteEnd(page)
     await page.keyboard.press('Shift+ArrowDown')
-    await page.waitForTimeout(200)
+    await waitForStable(page)
     const before = await readDoc(page)
+    const copied = await fireClipboard(page, 'copy')
+    expect((copied.text || '').length, JSON.stringify(copied.text)).toBeGreaterThan(0)
+    const beforeBlocks = await readBlocks(page)
     await page.keyboard.press('Z')
-    await page.waitForTimeout(300)
+    await waitForStable(page)
     const after = await readDoc(page)
-    expect(after.length, `${before.length} -> ${after.length}`).toBe(before.length + 1)
+    const blocks = await readBlocks(page)
+    const ov = await selectionState(page)
+    // The selected content is deleted and replaced by a single character.
+    expect(ov.count, JSON.stringify(ov)).toBe(0)
+    expect(after.length, `${before.length} -> ${after.length}`).toBeLessThan(before.length - 5)
+    expect((after.match(/Z/g) || []).length).toBe(1)
+    // Block count decreased by at least 1 (quote + list merged into one).
+    expect(blocks.length).toBeLessThan(beforeBlocks.length)
     expect(errors).toEqual([])
   })
 })
