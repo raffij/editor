@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, waitForStable } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, waitForStable } from './_helpers.js'
 
 // List block split (Enter) and merge (Backspace) permutations. Each test seeds
 // a controlled document via localStorage (the workspace demo reads
@@ -258,7 +258,7 @@ test.describe('list merge permutations (Backspace)', () => {
     expect(errors).toEqual([])
   })
 
-  test('M5: Backspace at start of a text paragraph after a list makes it the last item', async ({ page }) => {
+  test('M5: Backspace at start of a text paragraph after a list makes it the last item, caret ends at the merged block end', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openDoc(page, [LIST('bulleted-list', ['A', 'B']), P({ html: 'Tail' })])
     await setCaretPlain(page, 2, 0)
@@ -266,6 +266,11 @@ test.describe('list merge permutations (Backspace)', () => {
     const m = await readModel(page)
     expect(summarize(m), JSON.stringify(m)).toBe('bulleted-list[A|B|Tail](text=ABTail)')
     expect(m.length, JSON.stringify(m)).toBe(1)
+    const sel = await selectionState(page)
+    // Caret must land at the very end of the merged list (after the paragraph's
+    // text), not at the end of the first list item.
+    expect(sel.collapsed, JSON.stringify(sel)).toBe(true)
+    expect(sel.anchorOff, JSON.stringify(sel)).toBe('ABTail'.length)
     expect(errors).toEqual([])
   })
 
