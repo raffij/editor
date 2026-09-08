@@ -55,7 +55,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     expect(errors).toEqual([])
   })
 
-  test('g4: backspace over the selection removes exactly one char, no corruption', async ({ page }) => {
+  test('g4: backspace over the selection removes the whole selected range', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before4 = await readDoc(page)
@@ -66,12 +66,15 @@ test.describe('vertical navigation + cross-block editing', () => {
     await page.waitForTimeout(300)
     const after4 = await readDoc(page)
     const ov4 = await selectionState(page)
-    expect(after4.length, `${before4.length} -> ${after4.length}`).toBe(before4.length - 1)
+    // The whole cross-block selection (intro -> closing, through the list) is
+    // removed, not just one character, and the result is not corrupted.
+    expect(after4.length, `${before4.length} -> ${after4.length}`).toBeLessThan(before4.length - 100)
+    expect(after4.length, `${before4.length} -> ${after4.length}`).toBeGreaterThan(0)
     expect(ov4.count, JSON.stringify(ov4)).toBe(0)
     expect(errors).toEqual([])
   })
 
-  test('g5: delete over the selection removes exactly one char', async ({ page }) => {
+  test('g5: delete over the selection removes the whole selected range', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before5 = await readDoc(page)
@@ -81,7 +84,10 @@ test.describe('vertical navigation + cross-block editing', () => {
     await page.keyboard.press('Delete')
     await page.waitForTimeout(300)
     const after5 = await readDoc(page)
-    expect(after5.length, `${before5.length} -> ${after5.length}`).toBe(before5.length - 1)
+    const ov5 = await selectionState(page)
+    expect(after5.length, `${before5.length} -> ${after5.length}`).toBeLessThan(before5.length - 100)
+    expect(after5.length, `${before5.length} -> ${after5.length}`).toBeGreaterThan(0)
+    expect(ov5.count, JSON.stringify(ov5)).toBe(0)
     expect(errors).toEqual([])
   })
 

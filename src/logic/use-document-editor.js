@@ -198,5 +198,6 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     copyJson,
     resetDocument,
     convertBlockContent,
+    commitBlocks,
   }
 }

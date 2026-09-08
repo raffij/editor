@@ -1,4 +1,4 @@
-import { htmlTextLength } from './document-model'
+import { cleanBlockHtml, htmlTextLength, mergeBlockContent } from './document-model'
 
 export function isCaretAtBlockStart(element, selection, node = selection.anchorNode, offset = selection.anchorOffset) {
   if (!node || (!element.contains(node) && node !== element)) return false
@@ -226,6 +226,230 @@ function selectionEdges(model) {
     : { start: model.focus, end: model.anchor }
 }
 
+// ---------------------------------------------------------------------------
+// Cross-block range deletion
+// ---------------------------------------------------------------------------
+
+// Split the single text node that contains `offset` (global text offset across
+// the container) at that offset, and return { beforeNode, afterNode } — the two
+// halves. Assumes `offset` is inside a text node. Also returns the walker.
+function splitTextAtOffset(container, offset) {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+  let remaining = offset
+  let textNode = walker.nextNode()
+  while (textNode && remaining > textNode.textContent.length) {
+    remaining -= textNode.textContent.length
+    textNode = walker.nextNode()
+  }
+  if (!textNode) return { beforeNode: null, afterNode: null, atBoundary: true, boundaryNode: null }
+  if (remaining === textNode.textContent.length) {
+    return { beforeNode: textNode, afterNode: textNode.nextSibling, atBoundary: true, boundaryNode: textNode }
+  }
+  const afterNode = textNode.splitText(remaining)
+  return { beforeNode: textNode, afterNode, atBoundary: false, boundaryNode: textNode }
+}
+
+// Return the part of `html`'s text before `offset` as a standalone fragment of
+// DOM nodes. List blocks are handled at the list-item granularity: only whole
+// items fully before the cut are kept (a straddling item is trimmed to its
+// before-cut portion); non-list content is trimmed by walking text nodes.
+function prefixFragment(html, offset) {
+  const container = document.createElement('div')
+  container.innerHTML = html || ''
+  const frag = document.createDocumentFragment()
+
+  if (offset >= container.textContent.length) {
+    while (container.firstChild) frag.appendChild(container.firstChild)
+    return frag
+  }
+  if (offset <= 0) return frag
+
+  const items = Array.from(container.querySelectorAll('li'))
+  if (items.length) {
+    let consumed = 0
+    for (const li of items) {
+      const len = li.textContent.length
+      if (consumed + len <= offset) {
+        frag.appendChild(li)
+        consumed += len
+      } else if (consumed < offset) {
+        // Item straddles the cut: keep only its before-cut part.
+        li.textContent = li.textContent.slice(0, offset - consumed)
+        frag.appendChild(li)
+        break
+      } else {
+        break
+      }
+    }
+    return frag
+  }
+
+  const { beforeNode, atBoundary, boundaryNode } = splitTextAtOffset(container, offset)
+  if (atBoundary) {
+    let node = boundaryNode
+    while (node) {
+      const next = node.nextSibling
+      node.parentNode.removeChild(node)
+      node = next
+    }
+  } else if (beforeNode) {
+    let node = beforeNode.nextSibling
+    while (node) {
+      const next = node.nextSibling
+      node.parentNode.removeChild(node)
+      node = next
+    }
+  }
+  while (container.firstChild) frag.appendChild(container.firstChild)
+  return frag
+}
+
+// Return the part of `html`'s text at/after `offset` as a fragment. Nodes
+// wholly before the cut are dropped; the node containing the cut keeps only its
+// after-cut portion. List blocks are handled at item granularity.
+function suffixFragment(html, offset) {
+  const container = document.createElement('div')
+  container.innerHTML = html || ''
+  const frag = document.createDocumentFragment()
+
+  if (offset >= container.textContent.length) return frag
+  if (offset <= 0) {
+    while (container.firstChild) frag.appendChild(container.firstChild)
+    return frag
+  }
+
+  const items = Array.from(container.querySelectorAll('li'))
+  if (items.length) {
+    let consumed = 0
+    let started = false
+    for (const li of items) {
+      const len = li.textContent.length
+      if (started) {
+        frag.appendChild(li)
+        continue
+      }
+      if (consumed + len <= offset) {
+        consumed += len
+      } else {
+        // First item at/after the cut: keep its after-cut part as an item.
+        li.textContent = li.textContent.slice(offset - consumed)
+        frag.appendChild(li)
+        started = true
+      }
+    }
+    return frag
+  }
+
+  const { beforeNode, atBoundary, boundaryNode } = splitTextAtOffset(container, offset)
+  if (atBoundary) {
+    let node = boundaryNode.previousSibling
+    while (node) {
+      const prev = node.previousSibling
+      node.parentNode.removeChild(node)
+      node = prev
+    }
+  } else if (beforeNode) {
+    let node = beforeNode.previousSibling
+    while (node) {
+      const prev = node.previousSibling
+      node.parentNode.removeChild(node)
+      node = prev
+    }
+  }
+  while (container.firstChild) frag.appendChild(container.firstChild)
+  return frag
+}
+
+// Remove the cross-block selection (the range between the selection edges) from
+// the document model. Returns { blocks, caretId, caretOffset } describing the
+// resulting document and where the caret should land, or null if nothing was
+// deleted. The returned `blocks` is the full new block list.
+export function deleteCrossBlockRange(blocks, model) {
+  if (!model) return null
+  const edges = selectionEdges(model)
+  if (!edges) return null
+  const { start, end } = edges
+
+  const startBlock = blocks.find((b) => b.id === start.id)
+  const endBlock = blocks.find((b) => b.id === end.id)
+  if (!startBlock || !endBlock) return null
+  if (start.offset === end.offset && start.id === end.id) return null
+
+  // Same-block selection: just delete the interior text.
+  if (start.id === end.id) {
+    const container = document.createElement('div')
+    container.innerHTML = startBlock.html || ''
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+    let remaining = Math.max(start.offset, 0)
+    let startNode = walker.nextNode()
+    while (startNode && remaining > 0) {
+      const len = startNode.textContent.length
+      if (remaining < len) { startNode.splitText(remaining); break }
+      remaining -= len
+      startNode = walker.nextNode()
+    }
+    if (startNode && end.offset > start.offset) {
+      let endRemaining = end.offset - start.offset
+      let endNode = startNode
+      while (endNode && endRemaining > 0) {
+        const len = endNode.textContent.length
+        if (endRemaining < len) { endNode.splitText(endRemaining); break }
+        endRemaining -= len
+        endNode = walker.nextNode()
+      }
+      const range = document.createRange()
+      range.setStart(startNode, remaining)
+      if (endNode) range.setEnd(endNode, endRemaining); else range.setEndAfter(startNode)
+      range.deleteContents()
+    }
+    const updated = blocks.map((b) => b.id === startBlock.id ? { ...b, html: cleanBlockHtml(container.innerHTML) } : b)
+    return { blocks: updated, caretId: startBlock.id, caretOffset: Math.min(start.offset, end.offset) }
+  }
+
+  // Multi-block selection.
+  const startIndex = blocks.findIndex((b) => b.id === start.id)
+  const endIndex = blocks.findIndex((b) => b.id === end.id)
+
+  const startFrag = prefixFragment(startBlock.html || '', start.offset)
+  const endFrag = suffixFragment(endBlock.html || '', end.offset)
+  const serialize = (frag) => {
+    const out = document.createElement('div')
+    out.appendChild(frag.cloneNode(true))
+    return out.innerHTML
+  }
+  const startHtml = serialize(startFrag)
+  const endHtml = serialize(endFrag)
+
+  // Merge the surviving pieces (start prefix + end suffix) into a single block
+  // using the same list-aware merge the Backspace-at-start path uses, so list
+  // structure stays valid when lists straddle the cut. When one side is empty,
+  // the survivor is just the other side (avoids appending an empty <li>).
+  let mergedHtml
+  if (startHtml && endHtml) {
+    mergedHtml = mergeBlockContent(
+      { html: startHtml, type: startBlock.type },
+      { html: endHtml, type: endBlock.type },
+    )
+  } else {
+    mergedHtml = startHtml || endHtml
+  }
+
+  // Remove the middle + end blocks and keep the start block (with the merged
+  // survivors) in its original position. Keeping the start block guarantees at
+  // least one block survives even if the selection covered the whole document.
+  const deletedIds = new Set(blocks.slice(startIndex, endIndex + 1).map((b) => b.id))
+  const remaining = blocks.filter((b) => !deletedIds.has(b.id))
+  const survivor = { ...startBlock, html: cleanBlockHtml(mergedHtml) }
+  const next = [...remaining.slice(0, startIndex), survivor, ...remaining.slice(startIndex)]
+
+  return { blocks: next, caretId: startBlock.id, caretOffset: htmlTextLength(mergedHtml) }
+}
+
+let crossBlockDeleteHandler = null
+export function setCrossBlockDeleteHandler(handler) {
+  crossBlockDeleteHandler = handler
+}
+
 export function handleCrossBlockCopy(event) {
   if (!crossBlockModel) return false
   const text = crossBlockSelectionText()
@@ -439,6 +663,18 @@ export function handleCrossBlockEditKey(event) {
       crossBlockSplitHandler?.(point.id, before.innerHTML, after.innerHTML)
     }
     return true
+  }
+
+  // Backspace / Delete over a cross-block selection: remove the selected range
+  // from the document model rather than collapsing and deleting one character.
+  if (isDeletion && crossBlockDeleteHandler) {
+    const result = deleteCrossBlockRange(crossBlockDeleteHandler._getBlocks(), crossBlockModel)
+    if (result) {
+      event.preventDefault()
+      clearCrossBlockSelection()
+      crossBlockDeleteHandler(result)
+      return true
+    }
   }
 
   // Collapse to the selection start for Backspace (delete before the selection)

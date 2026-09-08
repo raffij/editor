@@ -2,7 +2,7 @@ import React from 'react'
 import { BlockRow } from './block-editor'
 import { Icon, ToolbarButton } from './editor-controls'
 import { blockDescription, highlightJson, typeMeta } from '../logic/document-model'
-import { crossBlockSelectionRects, setCrossBlockSplitHandler, subscribeCrossBlockSelection } from '../logic/caret-navigation'
+import { crossBlockSelectionRects, scheduleCaretAtTextOffset, setCrossBlockDeleteHandler, setCrossBlockSplitHandler, subscribeCrossBlockSelection } from '../logic/caret-navigation'
 
 // Paints the highlight for a cross-block selection. Some engines (WebKit/Safari)
 // clamp a DOM Selection to a single editing host, so the cross-block selection
@@ -61,6 +61,7 @@ export function EditorSurface({
     deleteBlock,
     moveBlock,
     convertBlockContent,
+    commitBlocks,
     execFormat,
     addLink,
     saveDocument,
@@ -76,6 +77,23 @@ export function EditorSurface({
   React.useEffect(() => {
     setCrossBlockSplitHandler((blockId, beforeHtml, afterHtml) => splitBlock(blockId, beforeHtml, afterHtml))
   }, [splitBlock])
+
+  // Handles Backspace / Delete over a cross-block selection: removes the
+  // selected content/blocks from the model and focuses the caret at the merge
+  // point instead of collapsing and deleting a single character.
+  React.useEffect(() => {
+    const handler = (result) => {
+      if (!result || !Array.isArray(result.blocks)) return
+      commitBlocks(result.blocks)
+      const caretId = result.caretId || result.blocks[0]?.id
+      if (caretId) {
+        setActiveId(caretId)
+        scheduleCaretAtTextOffset(caretId, result.caretOffset ?? 0)
+      }
+    }
+    handler._getBlocks = () => blocks
+    setCrossBlockDeleteHandler(handler)
+  }, [blocks, commitBlocks])
 
   return (
     <div className="papertrail-editor-surface">
