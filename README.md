@@ -41,6 +41,13 @@ Copy `dist/papertrail-editor.umd.js` and `dist/papertrail-editor.css` into the h
 
 The embed API accepts `initialBlocks`, controlled `value`, `onChange`, `onSave`, `storageKey`, `showToolbar`, `showJson`, `showHeader`, and `showActions`. `EmbedEditor` is also exported for React applications that prefer to render the component directly.
 
+## Documentation
+
+An interactive architecture diagram of the block editor (components, regions, and how the
+caret, selection, and document logic connect) is available at
+[`docs/block-system-architecture.html`](docs/block-system-architecture.html), with its source
+spec in [`docs/block-system-architecture.json`](docs/block-system-architecture.json).
+
 ## Regression tests
 
 The cross-block selection logic is engine-fragile by design (native selection within a block,
