@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, selectionState, setCaret, readDoc, readBlocks, fireClipboard, box, drag } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, setCaret, readDoc, readBlocks, fireClipboard, fireInsertParagraph, box, drag } from './_helpers.js'
 
 // Vertical navigation, overwrite/copy/cut/split over cross-block selections,
 // and same-block native selection behaviors across both engines.
@@ -99,6 +99,25 @@ test.describe('vertical navigation + cross-block editing', () => {
     const textAfter6 = blocksAfter6.map((b) => b.text).join('')
     expect(blocksAfter6.length, `${blocksBefore6.length} -> ${blocksAfter6.length}`).toBe(blocksBefore6.length + 1)
     expect(textAfter6.includes(textBefore6) && textAfter6.length === textBefore6.length, `${textBefore6.length} vs ${textAfter6.length}`).toBe(true)
+    expect(errors).toEqual([])
+  })
+
+  test('g14: mobile beforeinput (insertParagraph) creates a new block, not a stray <br>', async ({ page }) => {
+    // iOS/Android fire beforeinput instead of keydown for Enter; the split must
+    // run and produce a clean new paragraph block.
+    const errors = collectPageErrors(page)
+    await openApp(page)
+    await setCaret(page, 2, 20)
+    const blocksBefore = await readBlocks(page)
+    const res = await fireInsertParagraph(page, 2)
+    await page.waitForTimeout(400)
+    const blocksAfter = await readBlocks(page)
+    expect(res.handled, JSON.stringify(res)).toBe(true)
+    expect(blocksAfter.length, `${blocksBefore.length} -> ${blocksAfter.length}`).toBe(blocksBefore.length + 1)
+    const lead = blocksAfter[1]
+    const newBlock = blocksAfter[2]
+    expect(lead.text.length < 30, `lead not split: ${lead.text}`).toBe(true)
+    expect(newBlock.text.length > 0, `new block empty: ${newBlock.text}`).toBe(true)
     expect(errors).toEqual([])
   })
 
