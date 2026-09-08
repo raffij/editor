@@ -79,7 +79,8 @@ export function EditorSurface({
   }, [splitBlock])
 
   // Handles deleting a cross-block selection (Backspace/Delete/typing over it).
-  // Applies the computed block updates to the model and refocuses the caret.
+  // Applies the computed block updates to the model, merges the start and end
+  // blocks into one, and refocuses the caret.
   const handleCrossBlockDelete = (deletion, key) => {
     const { fromBlock, fromOffset, updates } = deletion
 
@@ -94,6 +95,22 @@ export function EditorSurface({
       }
     }
     const nextBlocks = blocks.filter((b) => byId.has(b.id)).map((b) => byId.get(b.id))
+
+    // After deletion: merge the end block into the start block so the two
+    // remaining halves become one block (standard editor merge behaviour).
+    // Strip trailing <br> from the end of the start block and the start of the
+    // end block before joining, so the join doesn't introduce a blank line.
+    if (nextBlocks.length >= 2) {
+      const startIdx = nextBlocks.findIndex((b) => b.id === fromBlock)
+      if (startIdx >= 0 && startIdx < nextBlocks.length - 1) {
+        const startBlock = nextBlocks[startIdx]
+        const endBlock = nextBlocks[startIdx + 1]
+        const startHtml = (startBlock.html || '').replace(/<br\s*\/?>\s*$/i, '')
+        const endHtml = (endBlock.html || '').replace(/^\s*<br\s*\/?>/i, '')
+        startBlock.html = startHtml + endHtml
+        nextBlocks.splice(startIdx + 1, 1)
+      }
+    }
 
     // Track a typed replacement so the caret lands after it.
     let caretOffset = fromOffset
@@ -125,8 +142,8 @@ export function EditorSurface({
 
     replaceBlocks(nextBlocks)
     const survives = nextBlocks.some((b) => b.id === fromBlock)
-    setActiveId(survives ? fromBlock : (nextBlocks[0]?.id || null))
-    const focusBlock = survives ? fromBlock : (nextBlocks[0]?.id || fromBlock)
+    const focusId = survives ? fromBlock : (nextBlocks[0]?.id || null)
+    setActiveId(focusId)
     setTimeout(() => {
       if (survives) scheduleCaretAtTextOffset(fromBlock, caretOffset)
       else if (nextBlocks[0]) scheduleCaretAtTextOffset(nextBlocks[0].id, 0)
