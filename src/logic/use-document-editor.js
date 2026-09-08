@@ -46,6 +46,13 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
 
   const updateBlock = (id, changes) => commitBlocks((current) => current.map((block) => block.id === id ? { ...block, ...changes, ...(changes.html != null ? { html: cleanBlockHtml(changes.html) } : {}) } : block))
 
+  // Replaces the whole block list with a new array (used for edits that span
+  // many blocks at once, e.g. deleting across a cross-block selection).
+  const replaceBlocks = (nextBlocks) => {
+    selectionAnchorRef.current = null
+    commitBlocks(nextBlocks)
+  }
+
   const addBlock = (type = 'paragraph', afterId = blocks[blocks.length - 1]?.id) => {
     const newBlock = { id: makeBlockId(type), type, html: emptyBlockHtml(type) }
     commitBlocks((current) => {
@@ -198,6 +205,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     updateBlock,
     addBlock,
     deleteBlock,
+    replaceBlocks,
     moveBlock,
     splitBlock,
     mergeBlockAtStart,

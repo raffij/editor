@@ -1,9 +1,9 @@
 import React, { useLayoutEffect, useRef } from 'react'
-import { beginBlockDragSelection, handleArrowNavigation, handleCrossBlockEditKey, isCaretAtBlockStart } from '../logic/caret-navigation'
+import { applyCrossBlockDeletion, beginBlockDragSelection, handleArrowNavigation, handleCrossBlockEditKey, isCaretAtBlockStart } from '../logic/caret-navigation'
 import { blockTagName, cleanBlockHtml, cleanElement, emptyBlockHtml, hasReadableText, isListType, typeMeta } from '../logic/document-model'
 import { Icon } from './editor-controls'
 
-function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selectionAnchorRef }) {
+function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, selectionAnchorRef }) {
   const ref = useRef(null)
   const lastHtmlRef = useRef(null)
   const lastTypeRef = useRef(block.type)
@@ -99,12 +99,17 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
       if (event.inputType === 'insertParagraph') {
         if (performSplit()) event.preventDefault()
       } else if (event.inputType === 'deleteContentBackward' || event.inputType === 'deleteContent') {
+        // Handle cross-block selection deletion on mobile.
+        if (applyCrossBlockDeletion(blocks)) {
+          event.preventDefault()
+          return
+        }
         if (performMergeAtStart()) event.preventDefault()
       }
     }
     el.addEventListener('beforeinput', handleBeforeInput)
     return () => el.removeEventListener('beforeinput', handleBeforeInput)
-  }, [block.type])
+  }, [block.type, blocks])
 
   return (
     <Tag
@@ -128,7 +133,7 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
       }}
       onKeyDown={(event) => {
         if (handleArrowNavigation(event, ref.current, selectionAnchorRef)) return
-        handleCrossBlockEditKey(event)
+        handleCrossBlockEditKey(event, blocks)
         if (!event.shiftKey) selectionAnchorRef.current = null
         mergeAtStart(event)
         if (!event.defaultPrevented) splitAtCaret(event)
@@ -137,7 +142,7 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
   )
 }
 
-export function BlockRow({ block, index, isActive, onFocus, onInput, onSplit, onBackspace, onChangeType, onDelete, onAddAfter, onFormat, selectionAnchorRef }) {
+export function BlockRow({ block, blocks, index, isActive, onFocus, onInput, onSplit, onBackspace, onChangeType, onDelete, onAddAfter, onFormat, selectionAnchorRef }) {
   const [overlayOpen, setOverlayOpen] = React.useState(false)
   const focusBlock = () => {
     onFocus()
@@ -160,7 +165,7 @@ export function BlockRow({ block, index, isActive, onFocus, onInput, onSplit, on
         </button>
       </div>
       <div className="block-main">
-        <BlockContent block={block} onFocus={focusBlock} onInput={onInput} onSplit={onSplit} onBackspace={onBackspace} selectionAnchorRef={selectionAnchorRef} />
+        <BlockContent block={block} blocks={blocks} onFocus={focusBlock} onInput={onInput} onSplit={onSplit} onBackspace={onBackspace} selectionAnchorRef={selectionAnchorRef} />
       </div>
       {isActive && overlayOpen && (
         <div className="block-overlay" role="dialog" aria-label="Block options" onClick={(event) => event.stopPropagation()}>
