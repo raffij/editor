@@ -79,19 +79,28 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     return next
   })
 
-  const splitBlock = (id, beforeHtml, afterHtml) => {
-    const newBlock = { id: makeBlockId('paragraph'), type: 'paragraph', html: afterHtml }
+  const splitBlock = (id, beforeHtml, afterHtml, { currentType = null, insertParagraph = false, afterType = 'paragraph' } = {}) => {
     selectionAnchorRef.current = null
+    const inserted = []
+    if (insertParagraph) inserted.push({ id: makeBlockId('paragraph'), type: 'paragraph', html: '' })
+    if (afterType) inserted.push({ id: makeBlockId(afterType), type: afterType, html: afterHtml })
     commitBlocks((current) => {
       const index = current.findIndex((block) => block.id === id)
       if (index < 0) return current
       const next = [...current]
-      next[index] = { ...next[index], html: beforeHtml }
-      next.splice(index + 1, 0, newBlock)
+      next[index] = currentType
+        ? { ...next[index], type: currentType, html: beforeHtml || '' }
+        : { ...next[index], html: beforeHtml }
+      next.splice(index + 1, 0, ...inserted)
       return next
     })
-    setActiveId(newBlock.id)
-    setTimeout(() => focusBlockStart(newBlock.id), 0)
+    // The list-empty split converts the current block to a paragraph (S6/S7);
+    // focus stays there. Every other split focuses the first inserted block.
+    const focusBlock = insertParagraph || !currentType
+      ? inserted[0]
+      : blocks.find((b) => b.id === id)
+    setActiveId(focusBlock?.id)
+    if (focusBlock) setTimeout(() => focusBlockStart(focusBlock.id), 0)
   }
 
   const mergeBlockAtStart = (id, currentHtml) => {
@@ -107,8 +116,14 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     const current = { ...blocks[index], html: currentHtml }
     const previousTextLength = htmlTextLength(previous.html)
     selectionAnchorRef.current = null
+    // When a non-list block merges into a list below it, the list structure
+    // wins: the previous text becomes the list's first item and the merged
+    // block takes the list type.
+    const currentIsList = current.type.includes('list')
+    const previousIsList = previous.type.includes('list')
+    const mergedType = currentIsList && !previousIsList ? current.type : previous.type
     const next = [...blocks]
-    next[index - 1] = { ...previous, html: mergeBlockContent(previous, current) }
+    next[index - 1] = { ...previous, type: mergedType, html: mergeBlockContent(previous, current) }
     next.splice(index, 1)
     commitBlocks(next)
     setActiveId(previous.id)
