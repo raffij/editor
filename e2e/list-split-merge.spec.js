@@ -258,7 +258,7 @@ test.describe('list merge permutations (Backspace)', () => {
     expect(errors).toEqual([])
   })
 
-  test('M5: Backspace at start of a text paragraph after a list makes it the last item, caret ends at the merged block end', async ({ page }) => {
+  test('M5: Backspace at start of a text paragraph after a list makes it the last item, caret lands at the junction (start of the merged item)', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openDoc(page, [LIST('bulleted-list', ['A', 'B']), P({ html: 'Tail' })])
     await setCaretPlain(page, 2, 0)
@@ -267,10 +267,11 @@ test.describe('list merge permutations (Backspace)', () => {
     expect(summarize(m), JSON.stringify(m)).toBe('bulleted-list[A|B|Tail](text=ABTail)')
     expect(m.length, JSON.stringify(m)).toBe(1)
     const sel = await selectionState(page)
-    // Caret must land at the very end of the merged list (after the paragraph's
-    // text), not at the end of the first list item.
+    // Caret must land at the junction — the start of the joined paragraph text
+    // (offset = length of the list's pre-merge text), matching how a plain
+    // paragraph merge behaves, not at the end of the merged block.
     expect(sel.collapsed, JSON.stringify(sel)).toBe(true)
-    expect(sel.anchorOff, JSON.stringify(sel)).toBe('ABTail'.length)
+    expect(sel.anchorOff, JSON.stringify(sel)).toBe('AB'.length)
     expect(errors).toEqual([])
   })
 
