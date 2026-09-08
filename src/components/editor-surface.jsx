@@ -1,7 +1,7 @@
 import React from 'react'
 import { BlockRow } from './block-editor'
 import { Icon, ToolbarButton } from './editor-controls'
-import { blockDescription, highlightJson, typeMeta } from '../logic/document-model'
+import { blockDescription, highlightJson, joinAcrossDeletedBoundary, typeMeta } from '../logic/document-model'
 import { crossBlockSelectionRects, scheduleCaretAtTextOffset, setCrossBlockDeleteHandler, setCrossBlockSplitHandler, subscribeCrossBlockSelection } from '../logic/caret-navigation'
 
 // Paints the highlight for a cross-block selection. Some engines (WebKit/Safari)
@@ -79,10 +79,10 @@ export function EditorSurface({
   }, [splitBlock])
 
   // Handles deleting a cross-block selection (Backspace/Delete/typing over it).
-  // Applies the computed block updates to the model, merges the start and end
-  // blocks into one, and refocuses the caret.
+  // Applies the computed block updates to the model, collapses the boundary
+  // between the start and end fragments, and refocuses the caret.
   const handleCrossBlockDelete = (deletion, key) => {
-    const { fromBlock, fromOffset, updates } = deletion
+    const { fromBlock, fromOffset, toBlock, updates } = deletion
 
     // Build the next blocks array: remove fully-deleted blocks, update the rest.
     const byId = new Map(blocks.map((b) => [b.id, { ...b }]))
@@ -96,19 +96,19 @@ export function EditorSurface({
     }
     const nextBlocks = blocks.filter((b) => byId.has(b.id)).map((b) => byId.get(b.id))
 
-    // After deletion: merge the end block into the start block so the two
-    // remaining halves become one block (standard editor merge behaviour).
-    // Strip trailing <br> from the end of the start block and the start of the
-    // end block before joining, so the join doesn't introduce a blank line.
-    if (nextBlocks.length >= 2) {
+    // After deletion the trimmed start and end fragments of the selection sit
+    // next to each other. Collapse the boundary the selection spanned: the end
+    // fragment's first line/item folds onto the start block (keeping the start
+    // block's type); same-type edges fold together entirely, while a different
+    // end type keeps its remaining lines/items as its own block.
+    if (nextBlocks.length >= 2 && toBlock && toBlock !== fromBlock) {
       const startIdx = nextBlocks.findIndex((b) => b.id === fromBlock)
-      if (startIdx >= 0 && startIdx < nextBlocks.length - 1) {
-        const startBlock = nextBlocks[startIdx]
-        const endBlock = nextBlocks[startIdx + 1]
-        const startHtml = (startBlock.html || '').replace(/<br\s*\/?>\s*$/i, '')
-        const endHtml = (endBlock.html || '').replace(/^\s*<br\s*\/?>/i, '')
-        startBlock.html = startHtml + endHtml
-        nextBlocks.splice(startIdx + 1, 1)
+      const endBlock = startIdx >= 0 ? nextBlocks[startIdx + 1] : null
+      if (endBlock && endBlock.id === toBlock) {
+        const { mergedHtml, remainderHtml } = joinAcrossDeletedBoundary(nextBlocks[startIdx], endBlock)
+        nextBlocks[startIdx] = { ...nextBlocks[startIdx], html: mergedHtml }
+        if (remainderHtml === null) nextBlocks.splice(startIdx + 1, 1)
+        else nextBlocks[startIdx + 1] = { ...endBlock, html: remainderHtml }
       }
     }
 

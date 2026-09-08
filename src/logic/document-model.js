@@ -163,6 +163,80 @@ export function mergeBlockContent(previous, current) {
   return `${previous.html || ''}${current.html || ''}`
 }
 
+// Appends inline html to the end of a block fragment's last line. For a list
+// that means inside the final <li> (the item the caret sits in), not as a new
+// item; for everything else it is a plain concatenation.
+function appendInlineToLastLine(startHtml, inlineHtml, startIsList) {
+  if (!inlineHtml) return startHtml
+  if (!startIsList) return `${startHtml}${inlineHtml}`
+  const container = document.createElement('div')
+  container.innerHTML = startHtml
+  const lastItem = container.querySelector('li:last-child')
+  if (!lastItem) return `${startHtml}<li>${inlineHtml}</li>`
+  lastItem.innerHTML = `${lastItem.innerHTML}${inlineHtml}`
+  return container.innerHTML
+}
+
+// Joins the two surviving fragments of a cross-block selection deletion. The
+// caller has already trimmed `startBlock.html` to the content before the
+// selection and `endBlock.html` to the content after it; this collapses the
+// boundary the selection spanned.
+//
+// The end fragment's first line/item folds onto the end of the start fragment's
+// last line, and the joined block keeps the start block's type. When the two
+// blocks share a type the whole end fragment folds in (an ordinary same-type
+// merge). When the types differ, only that first line/item folds in and the
+// rest stays as a block of the end block's own type.
+//
+// Returns { mergedHtml, remainderHtml }, where remainderHtml is null when the
+// end block is fully consumed.
+export function joinAcrossDeletedBoundary(startBlock, endBlock) {
+  const startIsList = isListType(startBlock.type)
+  const endIsList = isListType(endBlock.type)
+  const sameType = startBlock.type === endBlock.type
+  const startHtml = (startBlock.html || '').replace(/<br\s*\/?>\s*$/i, '')
+
+  // Split the end fragment into its first line/item and whatever follows.
+  const container = document.createElement('div')
+  container.innerHTML = endBlock.html || ''
+  let firstInline = ''
+  let restHtml = ''
+  if (endIsList) {
+    const items = Array.from(container.querySelectorAll('li'))
+    firstInline = items[0]?.innerHTML || ''
+    restHtml = items.slice(1).map((item) => item.outerHTML).join('')
+  } else {
+    const nodes = Array.from(container.childNodes)
+    const breakIndex = nodes.findIndex((node) => node.nodeName === 'BR')
+    if (breakIndex === -1) {
+      firstInline = container.innerHTML
+    } else {
+      const head = document.createElement('div')
+      const tail = document.createElement('div')
+      nodes.forEach((node, index) => {
+        if (index < breakIndex) head.appendChild(node.cloneNode(true))
+        else if (index > breakIndex) tail.appendChild(node.cloneNode(true))
+      })
+      firstInline = head.innerHTML
+      restHtml = tail.innerHTML
+    }
+  }
+
+  const joined = appendInlineToLastLine(startHtml, firstInline, startIsList)
+
+  if (sameType && restHtml) {
+    const mergedHtml = startIsList ? `${joined}${restHtml}` : `${joined}<br>${restHtml}`
+    return { mergedHtml: cleanBlockHtml(mergedHtml), remainderHtml: null }
+  }
+  if (sameType) {
+    return { mergedHtml: cleanBlockHtml(joined), remainderHtml: null }
+  }
+  return {
+    mergedHtml: cleanBlockHtml(joined),
+    remainderHtml: restHtml ? cleanBlockHtml(restHtml) : null,
+  }
+}
+
 export function htmlTextLength(html) {
   const container = document.createElement('div')
   container.innerHTML = html || ''

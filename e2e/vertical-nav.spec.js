@@ -55,13 +55,18 @@ test.describe('vertical navigation + cross-block editing', () => {
     expect(after3.length, `${before3.length} -> ${after3.length}`).toBeLessThan(before3.length / 2)
     // The replacement char is present exactly once.
     expect((after3.match(/Z/g) || []).length).toBe(1)
-    // Fully-selected blocks are gone and the trimmed halves are merged.
-    const goneIds = blocks3.map((b) => b.id)
-    expect(goneIds.includes('lead')).toBe(false)
-    expect(goneIds.includes('quote')).toBe(false)
-    expect(goneIds.includes('principles')).toBe(false)
-    // The two surviving blocks are merged into one.
-    expect(blocks3.length).toBe(2)
+    const presentIds = blocks3.map((b) => b.id)
+    // Fully-selected middle blocks are gone.
+    expect(presentIds.includes('lead'), JSON.stringify(presentIds)).toBe(false)
+    expect(presentIds.includes('quote'), JSON.stringify(presentIds)).toBe(false)
+    // The start block survives: its trimmed head, the list line the selection
+    // reached, and the typed char, joined as one block.
+    expect(presentIds.includes('intro'), JSON.stringify(presentIds)).toBe(true)
+    // Option A: list items the selection never reached stay a list block.
+    expect(presentIds.includes('principles'), JSON.stringify(presentIds)).toBe(true)
+    const liAfter = await page.evaluate(() => document.querySelectorAll('.block-content li').length)
+    expect(liAfter, JSON.stringify(blocks3)).toBeLessThan(3)
+    expect(blocks3.length, JSON.stringify(presentIds)).toBe(3)
     expect(errors).toEqual([])
   })
 

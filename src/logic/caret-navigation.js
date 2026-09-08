@@ -404,6 +404,8 @@ export function setCrossBlockDeleteHandler(handler) {
 // Deletes the content within a cross-block selection from the document model.
 // Returns an object with:
 //   - fromBlock, fromOffset: the (blockId, textOffset) at the selection start
+//   - toBlock: the blockId at the selection end (equal to fromBlock for a
+//     within-block selection)
 //   - updates: an array of { id, html } plain objects where `html === undefined`
 //     means the block should be removed entirely; otherwise `html` is the block's
 //     new innerHTML.
@@ -460,7 +462,7 @@ export function deleteCrossBlockSelection(blocks) {
     }
 
     updates.push({ id: start.id, html: cleanBlockHtml(tmp.innerHTML) })
-    return { fromBlock, fromOffset, updates }
+    return { fromBlock, fromOffset, toBlock: end.id, updates }
   }
 
   // Cross-block: delete fully-selected blocks in the middle.
@@ -478,19 +480,14 @@ export function deleteCrossBlockSelection(blocks) {
     let node = walker.nextNode()
     let remaining = start.offset
     while (node && remaining > 0) {
-      if (remaining < node.textContent.length) {
+      if (remaining <= node.textContent.length) {
+        // Delete from the selection start to the end of the block: the rest of
+        // this text node, plus every following node (later list items, trailing
+        // spans/<br>). Anchoring the range end at `tmp` rather than at this one
+        // node is what removes those siblings.
         const range = document.createRange()
-        range.setStart(node, remaining)
-        range.setEnd(node, node.textContent.length)
-        range.deleteContents()
-        break
-      }
-      if (remaining === node.textContent.length) {
-        // The selection starts exactly at the end of this text node (a
-        // boundary — e.g. between two list items or at the end of a span).
-        // Delete everything in the block from here to the end.
-        const range = document.createRange()
-        range.setStartAfter(node)
+        if (remaining === node.textContent.length) range.setStartAfter(node)
+        else range.setStart(node, remaining)
         range.setEnd(tmp, tmp.childNodes.length)
         range.deleteContents()
         break
@@ -532,7 +529,7 @@ export function deleteCrossBlockSelection(blocks) {
     updates.push({ id: end.id, html: cleanBlockHtml(tmp.innerHTML) })
   }
 
-  return { fromBlock, fromOffset, updates }
+  return { fromBlock, fromOffset, toBlock: end.id, updates }
 }
 
 // Applies a cross-block selection deletion for Backspace/Delete/typing. Runs

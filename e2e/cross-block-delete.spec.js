@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, selectionState } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, coords, dragPoints } from './_helpers.js'
 
 // Deleting a cross-block selection (Backspace / Delete) must remove the whole
 // selected range — every selected list item included — from the document model,
@@ -11,6 +11,7 @@ let seedCounter = 0
 const NID = () => `seed-${++seedCounter}`
 
 const P = (html, id) => ({ id: id || NID(), type: 'paragraph', html })
+const H = (html, id) => ({ id: id || NID(), type: 'heading', html })
 const LIST = (type, items, id) => ({ id: id || NID(), type, html: items.map((t) => `<li>${t}</li>`).join('') })
 
 async function openDoc(page, blocks) {
@@ -117,6 +118,62 @@ test.describe('cross-block range deletion', () => {
     // Fewer than the original 3 items remain, and no leftover empty items.
     expect(countLis(m), summarize(m)).toBeLessThan(3)
     expect(m.some((b) => b.liTexts.some((t) => t.trim() === '')), summarize(m)).toBe(false)
+    expect(errors).toEqual([])
+  })
+
+  test('D4: heading -> bulleted-list selection folds the cut item into the heading, keeps the rest a list', async ({ page }) => {
+    const errors = collectPageErrors(page)
+    await openDoc(page, [
+      H('Start writing here.', 'head'),
+      LIST('bulleted-list', ['item 1', 'item 2', 'item 3'], 'list'),
+      P('This is body text.', 'body'),
+    ])
+    // Select from mid-heading ("Start w|riting here.") through mid-first-item
+    // ("ite|m 1") and delete.
+    const a = await coords(page, 'head', 7)
+    const b = await coords(page, 'list', 3)
+    const ov = await dragPoints(page, [a, b], 10)
+    expect(ov.overlay, JSON.stringify(ov)).toBeGreaterThan(0)
+    await pressBackspace(page)
+    const m = await readModel(page)
+
+    // The heading must stay a heading with no list markup pulled into it.
+    expect(m[0].type, summarize(m)).toBe('heading')
+    expect(m[0].liTexts.length, summarize(m)).toBe(0)
+    expect(m[0].text.startsWith('Start w'), summarize(m)).toBe(true)
+    expect(/item [23]/.test(m[0].text), summarize(m)).toBe(false)
+
+    // The untouched items stay as their own bulleted list.
+    expect(m[1].type, summarize(m)).toBe('bulleted-list')
+    expect(m[1].liTexts, summarize(m)).toEqual(['item 2', 'item 3'])
+
+    expect(m.length, summarize(m)).toBe(3)
+    expect(errors).toEqual([])
+  })
+
+  test('D5: bulleted-list -> heading selection folds the heading tail into the cut item', async ({ page }) => {
+    const errors = collectPageErrors(page)
+    await openDoc(page, [
+      LIST('bulleted-list', ['one', 'two', 'three'], 'list'),
+      H('Heading text', 'head'),
+      P('tail', 'tail'),
+    ])
+    // Select from mid-second-item ("t|wo") through mid-heading ("Head|ing text").
+    const a = await coords(page, 'list', 4)
+    const b = await coords(page, 'head', 4)
+    const ov = await dragPoints(page, [a, b], 10)
+    expect(ov.overlay, JSON.stringify(ov)).toBeGreaterThan(0)
+    await pressBackspace(page)
+    const m = await readModel(page)
+
+    // The list stays a list; the heading tail joined the item the caret was in,
+    // and the heading block is consumed.
+    expect(m[0].type, summarize(m)).toBe('bulleted-list')
+    expect(m[0].liTexts.length, summarize(m)).toBe(2)
+    expect(m[0].liTexts[0], summarize(m)).toBe('one')
+    expect(m[0].liTexts[1].endsWith('ing text'), summarize(m)).toBe(true)
+    expect(m.some((b) => b.type === 'heading'), summarize(m)).toBe(false)
+    expect(m.length, summarize(m)).toBe(2)
     expect(errors).toEqual([])
   })
 })
