@@ -1,8 +1,9 @@
 # Papertrail editor
 
 The GitHub Pages site is the demo: [raffij.github.io/editor](https://raffij.github.io/editor/).
-Open the **Embed** tab in the top bar to see the editor dropped into a plain content page,
-with live controls for the embed options, an `onChange` JSON stream, and a copyable mount snippet.
+Open the **Embed** tab in the top bar to try the editor at full screen — a bare writing
+surface that fills the viewport, with live toggles for the embed options (toolbar, header,
+save/export, JSON panel). It works from a phone, so you can test mobile behaviour on the demo.
 
 ## Embed in any web app
 
