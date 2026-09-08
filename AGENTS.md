@@ -55,6 +55,10 @@ npm run build
 - **Auto-push.** After the assessment, tests, documentation, and verification
   are complete and everything passes, create a branch, commit, and open the PR
   without asking — unless the user has signalled they want to review first.
+- **Never push to a merged PR.** Once a PR has been merged (or closed), its
+  branch is dead — do not force-push to it, do not push new commits to it, and
+  do not reopen it. Start a new branch off the latest `main` instead and open a
+  fresh PR for any further work.
 - Branch name follows the existing convention: `fix/`, `polish/`, `feature/`,
   or similar prefix plus a short kebab-case slug (e.g. `fix/ios-enter-split`,
   `polish/block-layout`).
