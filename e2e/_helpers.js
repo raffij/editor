@@ -157,12 +157,30 @@ export const readBlocks = (page) =>
   )
 
 // Synthetic beforeinput on a block's contenteditable. iOS/Android software
-// keyboards fire beforeinput with inputType 'insertParagraph' (not a keydown)
-// for Enter, so this exercises the mobile split path directly.
+// keyboards fire beforeinput (not keydown) for Enter and Backspace, so these
+// exercise the mobile input path directly.
 export const fireInsertParagraph = (page, column = 1) =>
   page.evaluate((col) => {
     const el = document.querySelector(`.block-row:nth-child(${col}) .block-content`)
     const ev = new InputEvent('beforeinput', { inputType: 'insertParagraph', bubbles: true, cancelable: true })
+    const handled = el.dispatchEvent(ev) === false
+    return { handled }
+  }, column)
+
+// Fires deleteContentBackward with the caret placed at the block start.
+export const fireDeleteBackward = (page, column = 1) =>
+  page.evaluate((col) => {
+    const el = document.querySelector(`.block-row:nth-child(${col}) .block-content`)
+    el.focus()
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    const tn = walker.nextNode()
+    const r = document.createRange()
+    r.setStart(tn, 0)
+    r.collapse(true)
+    const s = window.getSelection()
+    s.removeAllRanges()
+    s.addRange(r)
+    const ev = new InputEvent('beforeinput', { inputType: 'deleteContentBackward', bubbles: true, cancelable: true })
     const handled = el.dispatchEvent(ev) === false
     return { handled }
   }, column)

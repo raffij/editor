@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, selectionState, setCaret, readDoc, readBlocks, fireClipboard, fireInsertParagraph, box, drag } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, setCaret, readDoc, readBlocks, fireClipboard, fireInsertParagraph, fireDeleteBackward, box, drag } from './_helpers.js'
 
 // Vertical navigation, overwrite/copy/cut/split over cross-block selections,
 // and same-block native selection behaviors across both engines.
@@ -118,6 +118,21 @@ test.describe('vertical navigation + cross-block editing', () => {
     const newBlock = blocksAfter[2]
     expect(lead.text.length < 30, `lead not split: ${lead.text}`).toBe(true)
     expect(newBlock.text.length > 0, `new block empty: ${newBlock.text}`).toBe(true)
+    expect(errors).toEqual([])
+  })
+
+  test('g15: mobile beforeinput (deleteContentBackward) at block start merges into previous', async ({ page }) => {
+    // iOS/Android fire beforeinput instead of keydown for Backspace; backspace
+    // at the start of a block must merge it into the previous block.
+    const errors = collectPageErrors(page)
+    await openApp(page)
+    const blocksBefore = await readBlocks(page)
+    const res = await fireDeleteBackward(page, 2)
+    await page.waitForTimeout(400)
+    const blocksAfter = await readBlocks(page)
+    expect(res.handled, JSON.stringify(res)).toBe(true)
+    expect(blocksAfter.length, `${blocksBefore.length} -> ${blocksAfter.length}`).toBe(blocksBefore.length - 1)
+    expect(blocksAfter[0].text, JSON.stringify(blocksAfter[0])).toBe(blocksBefore[0].text + blocksBefore[1].text)
     expect(errors).toEqual([])
   })
 
