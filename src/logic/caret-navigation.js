@@ -1,4 +1,4 @@
-import { htmlTextLength } from './document-model'
+import { cleanBlockHtml, htmlTextLength } from './document-model'
 
 export function isCaretAtBlockStart(element, selection, node = selection.anchorNode, offset = selection.anchorOffset) {
   if (!node || (!element.contains(node) && node !== element)) return false
@@ -396,12 +396,165 @@ export function setCrossBlockSplitHandler(handler) {
   crossBlockSplitHandler = handler
 }
 
+let crossBlockDeleteHandler = null
+export function setCrossBlockDeleteHandler(handler) {
+  crossBlockDeleteHandler = handler
+}
+
+// Deletes the content within a cross-block selection from the document model.
+// Returns an object with:
+//   - fromBlock, fromOffset: the (blockId, textOffset) at the selection start
+//   - updates: an array of { id, html } plain objects where `html === undefined`
+//     means the block should be removed entirely; otherwise `html` is the block's
+//     new innerHTML.
+// Returns null if the selection cannot be resolved.
+export function deleteCrossBlockSelection(blocks) {
+  if (!crossBlockModel) return null
+  const edges = selectionEdges(crossBlockModel)
+  if (!edges) return null
+  const { start, end } = edges
+
+  const blockElements = [...document.querySelectorAll('.document-canvas [data-block-id]')]
+  const startBlockIndex = blockElements.findIndex((el) => el.dataset.blockId === start.id)
+  const endBlockIndex = blockElements.findIndex((el) => el.dataset.blockId === end.id)
+  if (startBlockIndex < 0 || endBlockIndex < 0) return null
+
+  const updates = []
+  const fromBlock = start.id
+  const fromOffset = start.offset
+  const startBlockEl = blockElements[startBlockIndex]
+  const endBlockEl = blockElements[endBlockIndex]
+  const startBlockData = blocks.find((b) => b.id === start.id)
+  const endBlockData = blocks.find((b) => b.id === end.id)
+  if (!startBlockEl || !endBlockEl || !startBlockData || !endBlockData) return null
+
+  // Same block: delete the selected range within it.
+  if (start.id === end.id) {
+    const tmp = document.createElement('div')
+    tmp.innerHTML = startBlockEl.innerHTML
+    const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    let offset = 0
+    let startNode = null, startOff = 0, endNode = null, endOff = 0
+
+    while (node) {
+      const len = node.textContent.length
+      if (!startNode && start.offset <= offset + len) {
+        startNode = node
+        startOff = start.offset - offset
+      }
+      if (end.offset <= offset + len) {
+        endNode = node
+        endOff = end.offset - offset
+        break
+      }
+      offset += len
+      node = walker.nextNode()
+    }
+
+    if (startNode && endNode) {
+      const range = document.createRange()
+      range.setStart(startNode, startOff)
+      range.setEnd(endNode, endOff)
+      range.deleteContents()
+    }
+
+    updates.push({ id: start.id, html: cleanBlockHtml(tmp.innerHTML) })
+    return { fromBlock, fromOffset, updates }
+  }
+
+  // Cross-block: delete fully-selected blocks in the middle.
+  for (let i = startBlockIndex + 1; i < endBlockIndex; i++) {
+    updates.push({ id: blockElements[i].dataset.blockId })
+  }
+
+  // Start block: keep content before the selection start (or delete the block).
+  if (start.offset === 0) {
+    updates.push({ id: start.id })
+  } else {
+    const tmp = document.createElement('div')
+    tmp.innerHTML = startBlockEl.innerHTML
+    const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    let remaining = start.offset
+    while (node && remaining > 0) {
+      if (remaining < node.textContent.length) {
+        const range = document.createRange()
+        range.setStart(node, remaining)
+        range.setEnd(node, node.textContent.length)
+        range.deleteContents()
+        break
+      }
+      if (remaining === node.textContent.length) {
+        const nextNode = walker.nextNode()
+        if (nextNode) {
+          const range = document.createRange()
+          range.setStart(nextNode, 0)
+          const textNodes = [...document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)]
+          const lastNode = textNodes[textNodes.length - 1]
+          if (lastNode) {
+            range.setEnd(lastNode, lastNode.textContent.length)
+            range.deleteContents()
+          }
+        }
+        break
+      }
+      remaining -= node.textContent.length
+      node = walker.nextNode()
+    }
+    updates.push({ id: start.id, html: cleanBlockHtml(tmp.innerHTML) })
+  }
+
+  // End block: keep content after the selection end (or delete the block).
+  const endTextLen = htmlTextLength(endBlockData.html)
+  if (end.offset >= endTextLen) {
+    updates.push({ id: end.id })
+  } else {
+    const tmp = document.createElement('div')
+    tmp.innerHTML = endBlockEl.innerHTML
+    const walker = document.createTreeWalker(tmp, NodeFilter.SHOW_TEXT)
+    let node = walker.nextNode()
+    let remaining = end.offset
+    while (node && remaining > 0) {
+      if (remaining < node.textContent.length) {
+        const range = document.createRange()
+        range.setStart(node, 0)
+        range.setEnd(node, remaining)
+        range.deleteContents()
+        break
+      }
+      if (remaining === node.textContent.length) {
+        const range = document.createRange()
+        range.setStart(tmp, 0)
+        range.setEnd(node, node.textContent.length)
+        range.deleteContents()
+        break
+      }
+      remaining -= node.textContent.length
+      node = walker.nextNode()
+    }
+    updates.push({ id: end.id, html: cleanBlockHtml(tmp.innerHTML) })
+  }
+
+  return { fromBlock, fromOffset, updates }
+}
+
+// Applies a cross-block selection deletion for Backspace/Delete/typing. Runs
+// the registered handler to update the React model; returns true if handled.
+export function applyCrossBlockDeletion(blocks, key) {
+  if (!crossBlockModel || !crossBlockDeleteHandler) return false
+  const deletion = deleteCrossBlockSelection(blocks)
+  clearCrossBlockSelection()
+  if (!deletion) return false
+  crossBlockDeleteHandler(deletion, key)
+  return true
+}
+
 // A key that would edit content (typing, Backspace, Delete, Enter) over a
-// cross-block selection collapses the selection to one edge first. This keeps
-// the browser from mutating several editing hosts at once — which would
-// half-apply the edit and then get reverted by React — and falls back to
-// ordinary single-block editing at that edge.
-export function handleCrossBlockEditKey(event) {
+// cross-block selection deletes the selected content first, then handles the
+// key. This keeps the browser from mutating several editing hosts at once —
+// which would half-apply the edit and then get reverted by React.
+export function handleCrossBlockEditKey(event, blocks) {
   if (event.metaKey || event.ctrlKey || event.altKey) return false
   const isDeletion = event.key === 'Backspace' || event.key === 'Delete'
   const isInsertion = event.key.length === 1 || event.key === 'Enter'
@@ -441,12 +594,18 @@ export function handleCrossBlockEditKey(event) {
     return true
   }
 
-  // Collapse to the selection start for Backspace (delete before the selection)
-  // and to the selection end for Delete/typing.
+  // For Backspace, Delete, and character input: delete the selected content
+  // from the document model via the React handler, then prevent the browser
+  // from mutating several editing hosts at once.
+  if (applyCrossBlockDeletion(blocks, event.key)) {
+    event.preventDefault()
+    return true
+  }
+
+  // Fallback when blocks data is unavailable: collapse to one edge.
   const collapseToStart = event.key === 'Backspace'
   const point = collapseToStart ? edges.start : edges.end
   const element = point ? document.querySelector(`[data-block-id="${point.id}"]`) : null
-  clearCrossBlockSelection()
   if (!element) return false
   element.focus({ preventScroll: true })
   const caret = textPointAtOffset(element, point.offset)
