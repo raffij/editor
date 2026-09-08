@@ -48,14 +48,18 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
     if (performSplit()) event.preventDefault()
   }
 
+  const performMergeAtStart = () => {
+    const selection = window.getSelection()
+    if (!selection?.isCollapsed || !selection.rangeCount || !ref.current?.contains(selection.anchorNode)) return false
+    if (!isCaretAtBlockStart(ref.current, selection)) return false
+
+    onBackspace(cleanBlockHtml(ref.current.innerHTML))
+    return true
+  }
+
   const mergeAtStart = (event) => {
     if (event.key !== 'Backspace' || event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return
-    const selection = window.getSelection()
-    if (!selection?.isCollapsed || !selection.rangeCount || !ref.current?.contains(selection.anchorNode)) return
-    if (!isCaretAtBlockStart(ref.current, selection)) return
-
-    event.preventDefault()
-    onBackspace(cleanBlockHtml(ref.current.innerHTML))
+    if (performMergeAtStart()) event.preventDefault()
   }
 
   useLayoutEffect(() => {
@@ -68,13 +72,16 @@ function BlockContent({ block, onFocus, onInput, onSplit, onBackspace, selection
     lastTypeRef.current = block.type
   }, [block.type, content])
 
-  // iOS/Android software keyboards fire beforeinput instead of keydown for Enter
+  // iOS/Android software keyboards fire beforeinput instead of keydown.
+  // Enter -> insertParagraph; Backspace -> deleteContentBackward.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     const handleBeforeInput = (event) => {
       if (event.inputType === 'insertParagraph') {
         if (performSplit()) event.preventDefault()
+      } else if (event.inputType === 'deleteContentBackward' || event.inputType === 'deleteContent') {
+        if (performMergeAtStart()) event.preventDefault()
       }
     }
     el.addEventListener('beforeinput', handleBeforeInput)
