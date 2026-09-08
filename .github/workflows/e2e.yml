@@ -13,7 +13,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       # Playwright browsers (~1.5GB) are cached across runs; the key is tied to
