@@ -214,14 +214,15 @@ test.describe('list split permutations (Enter)', () => {
 })
 
 test.describe('list merge permutations (Backspace)', () => {
-  test('M1: Backspace at start of list merges previous paragraph INTO the list as first item', async ({ page }) => {
+  test('M1: Backspace at start of a list merges it into the paragraph above as text (list does not convert the previous block)', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openDoc(page, [P({ html: 'Hello' }), LIST('bulleted-list', ['A', 'B'])])
     await caretAtLiStart(page, 2, 0)
     await pressBackspace(page)
     const m = await readModel(page)
-    expect(summarize(m), JSON.stringify(m)).toBe('bulleted-list[Hello|A|B](text=HelloAB)')
+    expect(summarize(m), JSON.stringify(m)).toBe('paragraph[](text=HelloAB)')
     expect(m.length, JSON.stringify(m)).toBe(1)
+    expect(m[0].type, JSON.stringify(m)).toBe('paragraph')
     expect(errors).toEqual([])
   })
 
@@ -278,13 +279,14 @@ test.describe('list merge permutations (Backspace)', () => {
     expect(errors).toEqual([])
   })
 
-  test('M7: Backspace at start of a list after a heading/quote inlines into previous (no crash, text kept)', async ({ page }) => {
+  test('M7: Backspace at start of a list after a heading/quote merges into it as text, previous keeps its type', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openDoc(page, [{ id: NID(), type: 'quote', html: 'Q' }, LIST('bulleted-list', ['A'])])
     await caretAtLiStart(page, 2, 0)
     await pressBackspace(page)
     const m = await readModel(page)
     expect(m.length, JSON.stringify(m)).toBe(1)
+    expect(m[0].type, JSON.stringify(m)).toBe('quote')
     expect(m[0].text, JSON.stringify(m)).toBe('QA')
     expect(errors).toEqual([])
   })

@@ -57,8 +57,8 @@ The suites cover vertical navigation, list keyboard selection, mouse drags (forw
 cross-block, shrink-back), copy/cut/type/backspace over cross-block selections, mobile
 splitting and block-merge via synthetic `beforeinput`, iOS shift+backspace keydown merging, a
 full split/merge permutation matrix for list blocks (enter on empty/mid/start items breaks out
-of the list in place; backspacing a non-list block into a list folds it into the first item),
-and the rule that
+of the list in place; backspacing at the start of a list merges it into the block above as
+text, keeping that block's type), and the rule that
 highlights never bleed into the 40px control gutter on the left of each block.
 
 The suites run fully in parallel (each test seeds its own page), and waits are event-driven
