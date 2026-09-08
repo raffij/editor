@@ -38,7 +38,7 @@ test.describe('vertical navigation + cross-block editing', () => {
     expect(errors).toEqual([])
   })
 
-  test('g3: typing over the selection inserts exactly one char and clears the overlay', async ({ page }) => {
+  test('g3: typing over the selection deletes it and inserts the char', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before3 = await readDoc(page)
@@ -48,14 +48,24 @@ test.describe('vertical navigation + cross-block editing', () => {
     await page.keyboard.press('Z')
     await waitForStable(page)
     const after3 = await readDoc(page)
+    const blocks3 = await readBlocks(page)
     const ov3 = await selectionState(page)
     expect(ov3.count, JSON.stringify(ov3)).toBe(0)
-    expect(after3.length, `${before3.length} -> ${after3.length}`).toBe(before3.length + 1)
+    // The selected content is deleted (much shorter) rather than preserved.
+    expect(after3.length, `${before3.length} -> ${after3.length}`).toBeLessThan(before3.length / 2)
+    // The replacement char is present exactly once.
     expect((after3.match(/Z/g) || []).length).toBe(1)
+    // Fully-selected blocks are gone and the trimmed halves are merged.
+    const goneIds = blocks3.map((b) => b.id)
+    expect(goneIds.includes('lead')).toBe(false)
+    expect(goneIds.includes('quote')).toBe(false)
+    expect(goneIds.includes('principles')).toBe(false)
+    // The two surviving blocks are merged into one.
+    expect(blocks3.length).toBe(2)
     expect(errors).toEqual([])
   })
 
-  test('g4: backspace over the selection removes exactly one char, no corruption', async ({ page }) => {
+  test('g4: backspace over the selection deletes and merges blocks', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before4 = await readDoc(page)
@@ -65,13 +75,19 @@ test.describe('vertical navigation + cross-block editing', () => {
     await page.keyboard.press('Backspace')
     await waitForStable(page)
     const after4 = await readDoc(page)
+    const blocks4 = await readBlocks(page)
     const ov4 = await selectionState(page)
-    expect(after4.length, `${before4.length} -> ${after4.length}`).toBe(before4.length - 1)
+    // The selection is deleted wholesale, not a single character.
+    expect(after4.length, `${before4.length} -> ${after4.length}`).toBeLessThan(before4.length / 2)
     expect(ov4.count, JSON.stringify(ov4)).toBe(0)
+    // All middle blocks gone, start+end merged into one.
+    expect(blocks4.length, JSON.stringify(blocks4.map((b) => b.id))).toBe(1)
+    // No empty or corrupted content.
+    expect(blocks4[0].text.length > 0).toBe(true)
     expect(errors).toEqual([])
   })
 
-  test('g5: delete over the selection removes exactly one char', async ({ page }) => {
+  test('g5: delete over the selection deletes and merges blocks', async ({ page }) => {
     const errors = collectPageErrors(page)
     await openApp(page)
     const before5 = await readDoc(page)
@@ -81,7 +97,11 @@ test.describe('vertical navigation + cross-block editing', () => {
     await page.keyboard.press('Delete')
     await waitForStable(page)
     const after5 = await readDoc(page)
-    expect(after5.length, `${before5.length} -> ${after5.length}`).toBe(before5.length - 1)
+    const blocks5 = await readBlocks(page)
+    // The selection is deleted wholesale, not a single character.
+    expect(after5.length, `${before5.length} -> ${after5.length}`).toBeLessThan(before5.length / 2)
+    // All middle blocks gone, start+end merged into one.
+    expect(blocks5.length).toBe(1)
     expect(errors).toEqual([])
   })
 

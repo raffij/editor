@@ -2,7 +2,7 @@ import React from 'react'
 import { BlockRow } from './block-editor'
 import { Icon, ToolbarButton } from './editor-controls'
 import { blockDescription, highlightJson, typeMeta } from '../logic/document-model'
-import { crossBlockSelectionRects, setCrossBlockSplitHandler, subscribeCrossBlockSelection } from '../logic/caret-navigation'
+import { crossBlockSelectionRects, scheduleCaretAtTextOffset, setCrossBlockDeleteHandler, setCrossBlockSplitHandler, subscribeCrossBlockSelection } from '../logic/caret-navigation'
 
 // Paints the highlight for a cross-block selection. Some engines (WebKit/Safari)
 // clamp a DOM Selection to a single editing host, so the cross-block selection
@@ -56,6 +56,7 @@ export function EditorSurface({
     selectionAnchorRef,
     addBlock,
     updateBlock,
+    replaceBlocks,
     splitBlock,
     mergeBlockAtStart,
     deleteBlock,
@@ -77,6 +78,82 @@ export function EditorSurface({
     setCrossBlockSplitHandler((blockId, beforeHtml, afterHtml) => splitBlock(blockId, beforeHtml, afterHtml))
   }, [splitBlock])
 
+  // Handles deleting a cross-block selection (Backspace/Delete/typing over it).
+  // Applies the computed block updates to the model, merges the start and end
+  // blocks into one, and refocuses the caret.
+  const handleCrossBlockDelete = (deletion, key) => {
+    const { fromBlock, fromOffset, updates } = deletion
+
+    // Build the next blocks array: remove fully-deleted blocks, update the rest.
+    const byId = new Map(blocks.map((b) => [b.id, { ...b }]))
+    for (const update of updates) {
+      if (update.html === undefined) {
+        byId.delete(update.id)
+      } else {
+        const existing = byId.get(update.id)
+        if (existing) byId.set(update.id, { ...existing, html: update.html })
+      }
+    }
+    const nextBlocks = blocks.filter((b) => byId.has(b.id)).map((b) => byId.get(b.id))
+
+    // After deletion: merge the end block into the start block so the two
+    // remaining halves become one block (standard editor merge behaviour).
+    // Strip trailing <br> from the end of the start block and the start of the
+    // end block before joining, so the join doesn't introduce a blank line.
+    if (nextBlocks.length >= 2) {
+      const startIdx = nextBlocks.findIndex((b) => b.id === fromBlock)
+      if (startIdx >= 0 && startIdx < nextBlocks.length - 1) {
+        const startBlock = nextBlocks[startIdx]
+        const endBlock = nextBlocks[startIdx + 1]
+        const startHtml = (startBlock.html || '').replace(/<br\s*\/?>\s*$/i, '')
+        const endHtml = (endBlock.html || '').replace(/^\s*<br\s*\/?>/i, '')
+        startBlock.html = startHtml + endHtml
+        nextBlocks.splice(startIdx + 1, 1)
+      }
+    }
+
+    // Track a typed replacement so the caret lands after it.
+    let caretOffset = fromOffset
+    if (key && key.length === 1) {
+      const target = nextBlocks.find((b) => b.id === fromBlock)
+      if (target) {
+        const node = document.createElement('div')
+        node.innerHTML = target.html || ''
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT)
+        let tn = walker.nextNode()
+        let remaining = fromOffset
+        let insertNode = null
+        while (tn && remaining >= 0) {
+          if (remaining <= tn.textContent.length) {
+            insertNode = { node: tn, offset: remaining }
+            break
+          }
+          remaining -= tn.textContent.length
+          tn = walker.nextNode()
+        }
+        if (insertNode) {
+          const text = document.createTextNode(key)
+          insertNode.node.parentNode.insertBefore(text, insertNode.node.splitText(insertNode.offset))
+          target.html = node.innerHTML
+        }
+        caretOffset = fromOffset + key.length
+      }
+    }
+
+    replaceBlocks(nextBlocks)
+    const survives = nextBlocks.some((b) => b.id === fromBlock)
+    const focusId = survives ? fromBlock : (nextBlocks[0]?.id || null)
+    setActiveId(focusId)
+    setTimeout(() => {
+      if (survives) scheduleCaretAtTextOffset(fromBlock, caretOffset)
+      else if (nextBlocks[0]) scheduleCaretAtTextOffset(nextBlocks[0].id, 0)
+    }, 0)
+  }
+
+  React.useEffect(() => {
+    setCrossBlockDeleteHandler(handleCrossBlockDelete)
+  })
+
   return (
     <div className="papertrail-editor-surface">
       {showHeader && <div className="editor-header">
@@ -94,7 +171,7 @@ export function EditorSurface({
       <div className={`editor-layout ${layoutClass}`}>
         <section className="document-canvas" aria-label="Document editor">
           <div className="block-list">
-            {blocks.map((block, index) => <BlockRow key={block.id} block={block} index={index} isActive={activeId === block.id} onFocus={() => setActiveId(block.id)} onInput={(html) => updateBlock(block.id, { html })} onSplit={(beforeHtml, afterHtml, options) => splitBlock(block.id, beforeHtml, afterHtml, options)} onBackspace={(html) => mergeBlockAtStart(block.id, html)} onChangeType={(type) => updateBlock(block.id, { type, html: convertBlockContent(block, type) })} onDelete={() => deleteBlock(block.id)} onAddAfter={() => addBlock('paragraph', block.id)} onFormat={(action) => moveBlock(block.id, action)} selectionAnchorRef={selectionAnchorRef} />)}
+            {blocks.map((block, index) => <BlockRow key={block.id} block={block} blocks={blocks} index={index} isActive={activeId === block.id} onFocus={() => setActiveId(block.id)} onInput={(html) => updateBlock(block.id, { html })} onSplit={(beforeHtml, afterHtml, options) => splitBlock(block.id, beforeHtml, afterHtml, options)} onBackspace={(html) => mergeBlockAtStart(block.id, html)} onChangeType={(type) => updateBlock(block.id, { type, html: convertBlockContent(block, type) })} onDelete={() => deleteBlock(block.id)} onAddAfter={() => addBlock('paragraph', block.id)} onFormat={(action) => moveBlock(block.id, action)} selectionAnchorRef={selectionAnchorRef} />)}
           </div>
           <div className="add-block-wrap">
             <button className="add-block-button" onClick={() => setShowAddMenu((value) => !value)}><Icon name="plus" size={17} />Add block</button>
