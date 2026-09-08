@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Papertrail Block Editor — Block System Architecture",
+    "quality_profile": "showcase",
+    "viewBox": [1330, 450],
+    "repository": {
+      "url": "https://github.com/raffij/editor",
+      "revision": "21edaf891d7dcbe128f4808449d4dad93f4ad5bb"
+    },
+    "views": [
+      { "id": "react-layer", "label": "React rendering", "focus": ["editor-surface", "formatting-toolbar", "block-row", "block-content", "cross-block-overlay"], "note": "The component tree that renders and wraps each contentEditable block." },
+      { "id": "state-management", "label": "State & mutations", "focus": ["use-document-editor", "document-model", "block-content", "formatting-toolbar"], "note": "How user actions flow through commitBlocks to update the block array." },
+      { "id": "caret-and-selection", "label": "Caret & selection", "focus": ["caret-navigation", "cross-block-overlay", "block-content", "block-row"], "note": "Arrow-key navigation, text offset mapping, and cross-block selection painting." },
+      { "id": "persistence", "label": "Persistence & embed", "focus": ["use-document-editor", "local-storage", "embed-api"], "note": "localStorage auto-save, JSON export, and the controlled embed API." }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 12,
+    "gapX": 30,
+    "gapY": 40,
+    "cellW": 80,
+    "cellH": 50
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "Keyboard & mouse", "pos": [285, 18], "size": [120, 56] },
+    { "id": "editor-surface", "type": "frontend", "label": "EditorSurface", "sublabel": "Top-level layout", "pos": [270, 98], "size": [150, 60], "sources": [{ "path": "src/components/editor-surface.jsx" }] },
+    { "id": "formatting-toolbar", "type": "frontend", "label": "Formatting Toolbar", "sublabel": "Bold · Italic · Link", "pos": [40, 184], "size": [140, 56], "sources": [{ "path": "src/components/editor-surface.jsx", "label": "Toolbar section" }] },
+    { "id": "block-content", "type": "frontend", "label": "BlockContent", "sublabel": "contentEditable host", "pos": [270, 184], "size": [150, 56], "sources": [{ "path": "src/components/block-editor.jsx", "label": "BlockContent" }] },
+    { "id": "block-row", "type": "frontend", "label": "BlockRow", "sublabel": "Gutter + overlay popup", "pos": [620, 184], "size": [150, 56], "sources": [{ "path": "src/components/block-editor.jsx", "label": "BlockRow" }] },
+    { "id": "cross-block-overlay", "type": "frontend", "label": "Cross-Block Overlay", "sublabel": "Painted highlight spans", "pos": [1120, 184], "size": [150, 56], "sources": [{ "path": "src/components/editor-surface.jsx", "label": "Overlay component" }] },
+    { "id": "use-document-editor", "type": "backend", "label": "useDocumentEditor", "sublabel": "Hook · state & mutations", "pos": [270, 300], "size": [150, 60], "sources": [{ "path": "src/logic/use-document-editor.js" }] },
+    { "id": "document-model", "type": "backend", "label": "Document Model", "sublabel": "Block merge · convert", "pos": [620, 300], "size": [150, 56], "sources": [{ "path": "src/logic/document-model.js" }] },
+    { "id": "caret-navigation", "type": "backend", "label": "Caret Navigation", "sublabel": "Arrows · drag select", "pos": [1120, 300], "size": [150, 56], "sources": [{ "path": "src/logic/caret-navigation.js" }] },
+    { "id": "local-storage", "type": "database", "label": "localStorage", "sublabel": "Auto-save", "pos": [280, 384], "size": [130, 56] },
+    { "id": "embed-api", "type": "external", "label": "Embed API", "sublabel": "mountPapertrailEditor()", "pos": [620, 384], "size": [150, 56], "sources": [{ "path": "src/embed.jsx" }] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "React component tree", "wraps": ["editor-surface", "formatting-toolbar", "block-row", "block-content", "cross-block-overlay"], "pad": 20 },
+    { "kind": "region", "label": "Core logic (src/logic/)", "wraps": ["use-document-editor", "document-model", "caret-navigation"], "pad": 20 }
+  ],
+  "connections": [
+    { "id": "user-surface", "from": "user", "to": "editor-surface", "label": "input events", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelAt": [330, 89] },
+    { "id": "surface-blockrow", "from": "editor-surface", "to": "block-row", "label": "renders block list", "fromSide": "bottom", "toSide": "top" },
+    { "id": "toolbar-content", "from": "formatting-toolbar", "to": "block-content", "label": "format range", "variant": "dashed" },
+    { "id": "blockrow-blockcontent", "from": "block-row", "to": "block-content", "label": "wraps" },
+    { "id": "content-oninput", "from": "block-content", "to": "use-document-editor", "label": "onInput → updateBlock", "variant": "emphasis", "labelAt": [300, 270] },
+    { "id": "content-caret", "from": "block-content", "to": "caret-navigation", "label": "onKeyDown handler", "via": [[420, 268], [1120, 268]] },
+    { "id": "hook-docmodel", "from": "use-document-editor", "to": "document-model", "label": "merge · convert" },
+    { "id": "caret-overlay", "from": "caret-navigation", "to": "cross-block-overlay", "label": "selection model", "variant": "dashed" },
+    { "id": "hook-storage", "from": "use-document-editor", "to": "local-storage", "label": "saveDocument()", "fromSide": "bottom", "toSide": "top", "labelAt": [305, 372] },
+    { "id": "hook-embed", "from": "use-document-editor", "to": "embed-api", "label": "value · onChange", "variant": "dashed", "via": [[420, 384], [620, 384]] }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Block data model", "items": ["Five types: paragraph, heading, quote, bulleted-list, numbered-list", "Flat array of { id, type, html } — no nesting", "IDs generated as type-timestamp-random"] },
+    { "dot": "emerald", "title": "State flow", "items": ["All mutations via commitBlocks() → immutable array update", "Controlled mode (value/onChange) or uncontrolled (useState + localStorage)", "Block HTML cleaned on every input to strip junk markup"] },
+    { "dot": "violet", "title": "Caret navigation", "items": ["Arrow keys cross block boundaries via text-offset mapping", "Vertical arrows preserve horizontal position across blocks", "Cross-block selection uses synthetic model (WebKit cannot span contentEditable hosts)"] },
+    { "dot": "amber", "title": "Split & merge", "items": ["Enter: splitBlock() uses Range APIs to extract before/after HTML", "Backspace at start: mergeBlockAtStart() joins into previous block", "List splits have 9 distinct cases (S1–S9) for break-out and conversion"] }
+  ]
+}
