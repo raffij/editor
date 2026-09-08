@@ -29,9 +29,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright browsers
+      # OS packages (libevent, etc.) are NOT cached — a fresh runner never has
+      # them — so they must be installed on every run. Only the ~1.5GB browser
+      # download is skipped on a cache hit; browsers are restored by actions/cache
+      # above and re-verified by `playwright install`.
+      - name: Install Playwright OS dependencies
+        run: npx playwright install-deps chromium webkit
+
+      - name: Install Playwright browsers (cached)
         if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium webkit
+        run: npx playwright install chromium webkit
 
       # Builds the static bundle, then runs both headless projects in parallel
       # against `vite preview` (see playwright.config.js CI branch).
