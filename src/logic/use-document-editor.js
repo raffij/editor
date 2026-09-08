@@ -116,14 +116,8 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     const current = { ...blocks[index], html: currentHtml }
     const previousTextLength = htmlTextLength(previous.html)
     selectionAnchorRef.current = null
-    // When a non-list block merges into a list below it, the list structure
-    // wins: the previous text becomes the list's first item and the merged
-    // block takes the list type.
-    const currentIsList = current.type.includes('list')
-    const previousIsList = previous.type.includes('list')
-    const mergedType = currentIsList && !previousIsList ? current.type : previous.type
     const next = [...blocks]
-    next[index - 1] = { ...previous, type: mergedType, html: mergeBlockContent(previous, current) }
+    next[index - 1] = { ...previous, html: mergeBlockContent(previous, current) }
     next.splice(index, 1)
     commitBlocks(next)
     setActiveId(previous.id)

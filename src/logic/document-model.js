@@ -143,10 +143,16 @@ export function cleanBlockHtml(html) {
   return container.innerHTML
 }
 
+export function listItemsAsInlineHtml(html) {
+  const container = document.createElement('div')
+  container.innerHTML = html || ''
+  return Array.from(container.querySelectorAll('li')).map((item) => item.innerHTML).join('<br>')
+}
+
 export function mergeBlockContent(previous, current) {
   if (previous.type.includes('list') && current.type.includes('list')) return `${previous.html || ''}${current.html || ''}`
   if (previous.type.includes('list')) return `${previous.html || ''}<li>${current.html || ''}</li>`
-  if (current.type.includes('list')) return `<li>${previous.html || ''}</li>${current.html || ''}`
+  if (current.type.includes('list')) return `${previous.html || ''}${previous.html ? '<br>' : ''}${listItemsAsInlineHtml(current.html)}`
   return `${previous.html || ''}${current.html || ''}`
 }
 
