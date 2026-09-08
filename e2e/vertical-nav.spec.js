@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { openApp, collectPageErrors, selectionState, setCaret, readDoc, readBlocks, fireClipboard, fireInsertParagraph, fireDeleteBackward, box, drag } from './_helpers.js'
+import { openApp, collectPageErrors, selectionState, setCaret, readDoc, readBlocks, fireClipboard, fireInsertParagraph, fireDeleteBackward, fireShiftBackspaceKeydown, box, drag } from './_helpers.js'
 
 // Vertical navigation, overwrite/copy/cut/split over cross-block selections,
 // and same-block native selection behaviors across both engines.
@@ -128,6 +128,21 @@ test.describe('vertical navigation + cross-block editing', () => {
     await openApp(page)
     const blocksBefore = await readBlocks(page)
     const res = await fireDeleteBackward(page, 2)
+    await page.waitForTimeout(400)
+    const blocksAfter = await readBlocks(page)
+    expect(res.handled, JSON.stringify(res)).toBe(true)
+    expect(blocksAfter.length, `${blocksBefore.length} -> ${blocksAfter.length}`).toBe(blocksBefore.length - 1)
+    expect(blocksAfter[0].text, JSON.stringify(blocksAfter[0])).toBe(blocksBefore[0].text + blocksBefore[1].text)
+    expect(errors).toEqual([])
+  })
+
+  test('g16: iOS shift+backspace keydown at block start still merges (shift guard regression)', async ({ page }) => {
+    // iOS reports shiftKey=true for a plain Backspace at a block's first char;
+    // the keydown merge must not swallow it. Covers the previous shift-guard bug.
+    const errors = collectPageErrors(page)
+    await openApp(page)
+    const blocksBefore = await readBlocks(page)
+    const res = await fireShiftBackspaceKeydown(page, 2)
     await page.waitForTimeout(400)
     const blocksAfter = await readBlocks(page)
     expect(res.handled, JSON.stringify(res)).toBe(true)

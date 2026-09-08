@@ -185,6 +185,26 @@ export const fireDeleteBackward = (page, column = 1) =>
     return { handled }
   }, column)
 
+// Fires a Backspace keydown with shiftKey=true at the block start — iOS reports
+// shift=true for a plain Backspace at a block's first character, which must
+// still merge into the previous block (not be swallowed by a shift guard).
+export const fireShiftBackspaceKeydown = (page, column = 1) =>
+  page.evaluate((col) => {
+    const el = document.querySelector(`.block-row:nth-child(${col}) .block-content`)
+    el.focus()
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    const tn = walker.nextNode()
+    const r = document.createRange()
+    r.setStart(tn, 0)
+    r.collapse(true)
+    const s = window.getSelection()
+    s.removeAllRanges()
+    s.addRange(r)
+    const ev = new KeyboardEvent('keydown', { key: 'Backspace', code: 'Backspace', shiftKey: true, bubbles: true, cancelable: true })
+    const handled = el.dispatchEvent(ev) === false
+    return { handled }
+  }, column)
+
 // Synthetic ClipboardEvent on document; `defaultPrevented` means our handler ran.
 export const fireClipboard = (page, type) =>
   page.evaluate((t) => {
