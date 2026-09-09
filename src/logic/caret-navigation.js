@@ -796,7 +796,7 @@ export function focusBlockStart(id) {
   const element = document.querySelector(`[data-block-id="${id}"]`)
   if (!element) return
   const caretTarget = element.querySelector('li') || element
-  caretTarget.focus()
+  caretTarget.focus({ preventScroll: true })
   const selection = window.getSelection()
   const range = document.createRange()
   range.selectNodeContents(caretTarget)
@@ -812,7 +812,7 @@ export function focusBlockAtTextOffset(id, offset, attempt = 0) {
     return
   }
 
-  element.focus()
+  element.focus({ preventScroll: true })
   const selection = window.getSelection()
   const range = document.createRange()
   const point = textPointAtOffset(element, offset)
@@ -841,10 +841,10 @@ export function scheduleCaretAtStartOfListItem(id, itemIndex, attempt = 0) {
     const items = element.querySelectorAll('li')
     const li = items[itemIndex] || items[items.length - 1]
     if (!li) {
-      element.focus()
+      element.focus({ preventScroll: true })
       return
     }
-    element.focus()
+    element.focus({ preventScroll: true })
     const walker = document.createTreeWalker(li, NodeFilter.SHOW_TEXT)
     const firstText = walker.nextNode()
     const point = firstText ? { node: firstText, offset: 0 } : { node: li, offset: 0 }
