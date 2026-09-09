@@ -175,7 +175,7 @@ export function EditorSurface({
           </div>
           <div className="add-block-wrap">
             <button className="add-block-button" onClick={() => setShowAddMenu((value) => !value)}><Icon name="plus" size={17} />Add block</button>
-            {showAddMenu && <div className="add-menu"><div className="add-menu-label">Insert a block</div>{Object.entries(typeMeta).map(([type, meta]) => <button key={type} onClick={() => addBlock(type, activeId)}><span className="add-menu-icon">{meta.icon}</span><span><strong>{meta.label}</strong><small>{blockDescription(type)}</small></span><span className="add-menu-key">{type === 'paragraph' ? 'P' : ''}</span></button>)}</div>}
+            {showAddMenu && <div className="add-menu"><div className="add-menu-label">Insert a block</div>{Object.entries(typeMeta).map(([type, meta]) => <button key={type} onClick={() => addBlock(type)}><span className="add-menu-icon">{meta.icon}</span><span><strong>{meta.label}</strong><small>{blockDescription(type)}</small></span><span className="add-menu-key">{type === 'paragraph' ? 'P' : ''}</span></button>)}</div>}
           </div>
           <div className="canvas-footer"><span>Tip: select a block to see its structure controls</span><span>Markdown shortcuts supported</span></div>
         </section>
