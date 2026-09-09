@@ -803,7 +803,7 @@ export function focusBlockStart(id) {
   range.collapse(true)
   selection.removeAllRanges()
   selection.addRange(range)
-  caretTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  caretTarget.scrollIntoView({ block: 'center', inline: 'nearest' })
 }
 
 export function focusBlockAtTextOffset(id, offset, attempt = 0) {
@@ -821,7 +821,7 @@ export function focusBlockAtTextOffset(id, offset, attempt = 0) {
   range.collapse(true)
   selection.removeAllRanges()
   selection.addRange(range)
-  element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  element.scrollIntoView({ block: 'center', inline: 'nearest' })
 }
 
 export function scheduleCaretAtTextOffset(id, offset) {
@@ -844,7 +844,7 @@ export function scheduleCaretAtStartOfListItem(id, itemIndex, attempt = 0) {
     const li = items[itemIndex] || items[items.length - 1]
     if (!li) {
       element.focus({ preventScroll: true })
-      element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      element.scrollIntoView({ block: 'center', inline: 'nearest' })
       return
     }
     element.focus({ preventScroll: true })
@@ -857,6 +857,6 @@ export function scheduleCaretAtStartOfListItem(id, itemIndex, attempt = 0) {
     const selection = window.getSelection()
     selection.removeAllRanges()
     selection.addRange(range)
-    element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    element.scrollIntoView({ block: 'center', inline: 'nearest' })
   }))
 }
