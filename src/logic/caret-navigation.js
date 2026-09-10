@@ -792,6 +792,25 @@ export function handleArrowNavigation(event, element, selectionAnchorRef) {
   return moveToAdjacentBlock(focusElement, direction, event.shiftKey, selectionAnchorRef, targetOffset)
 }
 
+// Scrolls the caret into view only when it is off-screen. Scrolling the whole
+// block element instead (element.scrollIntoView({ block: 'center' })) re-centers
+// the page on every merge/add/delete even when the caret is already visible —
+// and when the target block is taller than the viewport it scrolls the document
+// by hundreds of pixels, which reads as the page or keyboard jumping. Scrolling
+// a collapsed caret range is a no-op while the caret is fully visible, and only
+// then moves the document the minimum needed, with breathing room around the
+// caret instead of pinning it flush to the viewport edge.
+function scrollCaretIntoView() {
+  const selection = window.getSelection()
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+  if (!range || !range.collapsed) return
+  const rect = range.getBoundingClientRect()
+  if (!rect || (!rect.width && !rect.height)) return
+  const margin = 24
+  if (rect.top >= margin && rect.bottom <= window.innerHeight - margin) return
+  range.scrollIntoView({ block: 'center', inline: 'nearest' })
+}
+
 export function focusBlockStart(id) {
   const element = document.querySelector(`[data-block-id="${id}"]`)
   if (!element) return
@@ -803,7 +822,7 @@ export function focusBlockStart(id) {
   range.collapse(true)
   selection.removeAllRanges()
   selection.addRange(range)
-  caretTarget.scrollIntoView({ block: 'center', inline: 'nearest' })
+  scrollCaretIntoView()
 }
 
 export function focusBlockAtTextOffset(id, offset, attempt = 0) {
@@ -821,7 +840,7 @@ export function focusBlockAtTextOffset(id, offset, attempt = 0) {
   range.collapse(true)
   selection.removeAllRanges()
   selection.addRange(range)
-  element.scrollIntoView({ block: 'center', inline: 'nearest' })
+  scrollCaretIntoView()
 }
 
 export function scheduleCaretAtTextOffset(id, offset) {
@@ -844,7 +863,7 @@ export function scheduleCaretAtStartOfListItem(id, itemIndex, attempt = 0) {
     const li = items[itemIndex] || items[items.length - 1]
     if (!li) {
       element.focus({ preventScroll: true })
-      element.scrollIntoView({ block: 'center', inline: 'nearest' })
+      element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
       return
     }
     element.focus({ preventScroll: true })
@@ -857,6 +876,6 @@ export function scheduleCaretAtStartOfListItem(id, itemIndex, attempt = 0) {
     const selection = window.getSelection()
     selection.removeAllRanges()
     selection.addRange(range)
-    element.scrollIntoView({ block: 'center', inline: 'nearest' })
+    scrollCaretIntoView()
   }))
 }

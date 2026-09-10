@@ -69,8 +69,11 @@ full split/merge permutation matrix for list blocks (enter on empty/mid/start it
 of the list in place; backspacing at the start of a list merges it into the block above as
 text, keeping that block's type; backspacing at the start of a paragraph joins it into the
 previous block with the caret placed at the junction — the start of the joined item, even
-when the paragraph carries spans/<br> and the target list has empty items), and the rule that
-highlights never bleed into the 40px control gutter on the left of each block.
+when the paragraph carries spans/<br> and the target list has empty items), the rule that
+highlights never bleed into the 40px control gutter on the left of each block, and the
+promise that backspacing a block away (merge or delete) never re-centres the page: the
+caret lands where the removed block sat and the viewport only scrolls when the caret itself
+is off-screen.
 
 The suites run fully in parallel (each test seeds its own page), and waits are event-driven
 rather than fixed sleeps. Locally they run against the Vite dev server; on CI they run against a
