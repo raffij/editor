@@ -147,4 +147,30 @@ test.describe('backspace block removal does not jump the page', () => {
     expect(caret.bottom, JSON.stringify(caret)).toBeLessThanOrEqual(caret.vh)
     expect(errors).toEqual([])
   })
+
+  // On real iOS Safari, removing the currently-focused contenteditable node
+  // (React unmounting the merged-away block) hands focus to <body> for a
+  // moment before our rAF-scheduled caret placement runs, and the browser
+  // resets scroll on its own in that gap — the actual source of the jump this
+  // suite otherwise can't reproduce headlessly (desktop engines don't exhibit
+  // it). The fix moves focus to the surviving block eagerly, synchronously,
+  // before the block is removed, so the old node is never left focused with
+  // nothing to fall back to. Verify that eager hand-off directly.
+  test('merging a block moves focus to the surviving block before the removal, not after', async ({ page }) => {
+    const errors = collectPageErrors(page)
+    await openDoc(page, [P({ html: 'Paragraph one text here' }), P({ html: 'Paragraph two text here' })])
+    await caretAtStart(page, 2)
+    await waitForStable(page)
+
+    const survivorId = await page.evaluate(() => document.querySelector('.block-row:nth-child(1) .block-content').dataset.blockId)
+
+    await page.keyboard.press('Backspace')
+    // Checked immediately, before any rAF has had a chance to run: focus must
+    // already be on the survivor, not on <body> waiting for later placement.
+    const activeId = await page.evaluate(() => document.activeElement?.dataset?.blockId ?? null)
+    expect(activeId).toBe(survivorId)
+
+    await waitForStable(page)
+    expect(errors).toEqual([])
+  })
 })
