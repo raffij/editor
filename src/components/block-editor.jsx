@@ -62,12 +62,34 @@ function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, s
     if (performSplit()) event.preventDefault()
   }
 
+  // When this backspace removes the focused block (merging it away, or
+  // deleting it outright when empty), focus the block that will survive
+  // *before* triggering the state update. Otherwise React unmounts the
+  // still-focused element first and the browser, seeing focus vanish with
+  // nothing to fall back to, yanks the scroll position on its own (iOS Safari
+  // resets it near the top) before our own rAF-scheduled caret placement ever
+  // runs — that native reflex, not our scrollIntoView call, is the jump.
+  // Focusing the survivor here means focus moves deliberately and the node
+  // being removed was never the last one focused.
+  const preFocusMergeSurvivor = (html) => {
+    const index = blocks.findIndex((b) => b.id === block.id)
+    if (index < 0) return
+    const readable = hasReadableText(html)
+    if (readable && index === 0) return
+    if (!readable && blocks.length === 1) return
+    const survivor = readable ? blocks[index - 1] : (blocks[index - 1] || blocks[index + 1])
+    const survivorEl = survivor && document.querySelector(`[data-block-id="${survivor.id}"]`)
+    survivorEl?.focus({ preventScroll: true })
+  }
+
   const performMergeAtStart = () => {
     const selection = window.getSelection()
     if (!selection?.isCollapsed || !selection.rangeCount || !ref.current?.contains(selection.anchorNode)) return false
     if (!isCaretAtBlockStart(ref.current, selection)) return false
 
-    onBackspace(cleanBlockHtml(ref.current.innerHTML))
+    const html = cleanBlockHtml(ref.current.innerHTML)
+    preFocusMergeSurvivor(html)
+    onBackspace(html)
     return true
   }
 
