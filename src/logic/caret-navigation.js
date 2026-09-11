@@ -792,6 +792,28 @@ export function handleArrowNavigation(event, element, selectionAnchorRef) {
   return moveToAdjacentBlock(focusElement, direction, event.shiftKey, selectionAnchorRef, targetOffset)
 }
 
+// The embed surface (papertrail-embed) scrolls inside its own fixed-height
+// box (.editor-layout has overflow-y: auto) rather than the page/window —
+// that's what makes it embeddable at a fixed size in a host page. Checking
+// the caret against window.innerHeight there is meaningless: the window can
+// be much taller than the little box the editor actually renders in, so the
+// check reports "visible" for a caret that's really hidden below the box's
+// own clipped bottom edge. Walk up from the caret to the nearest ancestor
+// that actually scrolls, and use its bounds instead; only fall back to the
+// window when nothing between the caret and <body> scrolls on its own.
+function nearestScrollBounds(node) {
+  let element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
+  while (element && element !== document.body) {
+    const style = getComputedStyle(element)
+    if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && element.scrollHeight > element.clientHeight + 1) {
+      const rect = element.getBoundingClientRect()
+      return { top: rect.top, bottom: rect.bottom }
+    }
+    element = element.parentElement
+  }
+  return { top: 0, bottom: window.innerHeight }
+}
+
 // Scrolls the caret into view only when it is off-screen. Scrolling the whole
 // block element instead (element.scrollIntoView({ block: 'center' })) re-centers
 // the page on every merge/add/delete even when the caret is already visible —
@@ -807,7 +829,8 @@ function scrollCaretIntoView() {
   const rect = range.getBoundingClientRect()
   if (!rect || (!rect.width && !rect.height)) return
   const margin = 24
-  if (rect.top >= margin && rect.bottom <= window.innerHeight - margin) return
+  const bounds = nearestScrollBounds(range.startContainer)
+  if (rect.top >= bounds.top + margin && rect.bottom <= bounds.bottom - margin) return
   range.scrollIntoView({ block: 'center', inline: 'nearest' })
 }
 
