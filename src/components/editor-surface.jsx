@@ -144,10 +144,8 @@ export function EditorSurface({
     const survives = nextBlocks.some((b) => b.id === fromBlock)
     const focusId = survives ? fromBlock : (nextBlocks[0]?.id || null)
     setActiveId(focusId)
-    setTimeout(() => {
-      if (survives) scheduleCaretAtTextOffset(fromBlock, caretOffset)
-      else if (nextBlocks[0]) scheduleCaretAtTextOffset(nextBlocks[0].id, 0)
-    }, 0)
+    if (survives) scheduleCaretAtTextOffset(fromBlock, caretOffset)
+    else if (nextBlocks[0]) scheduleCaretAtTextOffset(nextBlocks[0].id, 0)
   }
 
   React.useEffect(() => {

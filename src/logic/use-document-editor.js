@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { focusBlockStart, scheduleCaretAtStartOfListItem, scheduleCaretAtTextOffset } from './caret-navigation'
+import { scheduleCaretAtStartOfListItem, scheduleCaretAtTextOffset, scheduleFocusBlockStart } from './caret-navigation'
 import { cleanBlockHtml, cleanElement, convertBlockContent, countListItems, emptyBlockHtml, hasReadableText, htmlTextLength, makeBlockId, mergeBlockContent, starterBlocks } from './document-model'
 
 function cloneBlocks(blocks) {
@@ -64,7 +64,11 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     })
     setActiveId(newBlock.id)
     setShowAddMenu(false)
-    setTimeout(() => focusBlockStart(newBlock.id), 0)
+    // Double-rAF with retries: the new row may not be committed yet when this
+    // runs, and a single setTimeout can fire before React mounts it — leaving
+    // focus (and the scroll) behind on the old block while the new one sits
+    // off-screen.
+    scheduleFocusBlockStart(newBlock.id)
   }
 
   const deleteBlock = (id) => {
@@ -107,7 +111,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
       ? inserted[0]
       : blocks.find((b) => b.id === id)
     setActiveId(focusBlock?.id)
-    if (focusBlock) setTimeout(() => focusBlockStart(focusBlock.id), 0)
+    if (focusBlock) scheduleFocusBlockStart(focusBlock.id)
   }
 
   const mergeBlockAtStart = (id, currentHtml) => {
