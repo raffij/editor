@@ -3,7 +3,7 @@ import { applyCrossBlockDeletion, beginBlockDragSelection, handleArrowNavigation
 import { blockTagName, cleanBlockHtml, cleanElement, emptyBlockHtml, hasReadableText, isListType, sanitizePastedHtml, typeMeta } from '../logic/document-model'
 import { Icon } from './editor-controls'
 
-function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, selectionAnchorRef }) {
+function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, selectionAnchorRef, onUndo, onRedo }) {
   const ref = useRef(null)
   const lastHtmlRef = useRef(null)
   const lastTypeRef = useRef(block.type)
@@ -171,6 +171,23 @@ function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, s
         onInput(nextHtml)
       }}
       onKeyDown={(event) => {
+        // Undo/redo is a document-level history operation, not a per-block
+        // browser edit — handle it before any of the selection/split/merge
+        // logic below, and instead of the browser's own execCommand undo
+        // (which only replays one editing host's native text history and
+        // knows nothing about block add/delete/move/split/merge).
+        const key = event.key.toLowerCase()
+        if ((event.metaKey || event.ctrlKey) && !event.altKey && key === 'z') {
+          event.preventDefault()
+          if (event.shiftKey) onRedo?.()
+          else onUndo?.()
+          return
+        }
+        if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && key === 'y') {
+          event.preventDefault()
+          onRedo?.()
+          return
+        }
         if (handleArrowNavigation(event, ref.current, selectionAnchorRef)) return
         handleCrossBlockEditKey(event, blocks)
         if (!event.shiftKey) selectionAnchorRef.current = null
@@ -181,7 +198,7 @@ function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, s
   )
 }
 
-export function BlockRow({ block, blocks, index, isActive, onFocus, onInput, onSplit, onBackspace, onChangeType, onDelete, onAddAfter, onFormat, selectionAnchorRef }) {
+export function BlockRow({ block, blocks, index, isActive, onFocus, onInput, onSplit, onBackspace, onChangeType, onDelete, onAddAfter, onFormat, selectionAnchorRef, onUndo, onRedo }) {
   const [overlayOpen, setOverlayOpen] = React.useState(false)
   const focusBlock = () => {
     onFocus()
@@ -204,7 +221,7 @@ export function BlockRow({ block, blocks, index, isActive, onFocus, onInput, onS
         </button>
       </div>
       <div className="block-main">
-        <BlockContent block={block} blocks={blocks} onFocus={focusBlock} onInput={onInput} onSplit={onSplit} onBackspace={onBackspace} selectionAnchorRef={selectionAnchorRef} />
+        <BlockContent block={block} blocks={blocks} onFocus={focusBlock} onInput={onInput} onSplit={onSplit} onBackspace={onBackspace} selectionAnchorRef={selectionAnchorRef} onUndo={onUndo} onRedo={onRedo} />
       </div>
       {isActive && overlayOpen && (
         <div className="block-overlay" role="dialog" aria-label="Block options" onClick={(event) => event.stopPropagation()}>

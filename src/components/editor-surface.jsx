@@ -70,6 +70,10 @@ export function EditorSurface({
     saveDocument,
     exportJson,
     copyJson,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = editor
 
   const saveLabel = saved ? 'Saved just now' : 'Unsaved changes'
@@ -174,13 +178,13 @@ export function EditorSurface({
         <div className="toolbar-group"><ToolbarButton label="Bold" shortcut="⌘ B" onClick={() => execFormat('bold')}><Icon name="bold" size={17} /></ToolbarButton><ToolbarButton label="Italic" shortcut="⌘ I" onClick={() => execFormat('italic')}><Icon name="italic" size={17} /></ToolbarButton><ToolbarButton label="Add link" shortcut="⌘ K" onClick={addLink}><Icon name="link" size={17} /></ToolbarButton></div>
         <div className="toolbar-rule" />
         <div className="toolbar-group"><ToolbarButton label="Bulleted list" onClick={() => addBlock('bulleted-list', activeId)}><Icon name="bullet" size={17} /></ToolbarButton><ToolbarButton label="Numbered list" onClick={() => addBlock('numbered-list', activeId)}><Icon name="ordered" size={17} /></ToolbarButton><ToolbarButton label="Quote block" onClick={() => addBlock('quote', activeId)}><Icon name="quote" size={17} /></ToolbarButton><ToolbarButton label="Code" onClick={() => execFormat('formatBlock', 'pre')}><Icon name="code" size={17} /></ToolbarButton></div>
-        <div className="toolbar-spacer" /><div className="toolbar-group"><ToolbarButton label="Undo" shortcut="⌘ Z" onClick={() => execFormat('undo')}><Icon name="undo" size={17} /></ToolbarButton><ToolbarButton label="Redo" shortcut="⌘ ⇧ Z" onClick={() => execFormat('redo')}><Icon name="redo" size={17} /></ToolbarButton></div>
+        <div className="toolbar-spacer" /><div className="toolbar-group"><ToolbarButton label="Undo" shortcut="⌘ Z" onClick={undo} disabled={!canUndo}><Icon name="undo" size={17} /></ToolbarButton><ToolbarButton label="Redo" shortcut="⌘ ⇧ Z" onClick={redo} disabled={!canRedo}><Icon name="redo" size={17} /></ToolbarButton></div>
       </div>}
 
       <div className={`editor-layout ${layoutClass}`}>
         <section className="document-canvas" aria-label="Document editor">
           <div className="block-list">
-            {blocks.map((block, index) => <BlockRow key={block.id} block={block} blocks={blocks} index={index} isActive={activeId === block.id} onFocus={() => setActiveId(block.id)} onInput={(html) => updateBlock(block.id, { html })} onSplit={(beforeHtml, afterHtml, options) => splitBlock(block.id, beforeHtml, afterHtml, options)} onBackspace={(html) => mergeBlockAtStart(block.id, html)} onChangeType={(type) => updateBlock(block.id, { type, html: convertBlockContent(block, type) })} onDelete={() => deleteBlock(block.id)} onAddAfter={() => addBlock('paragraph', block.id)} onFormat={(action) => moveBlock(block.id, action)} selectionAnchorRef={selectionAnchorRef} />)}
+            {blocks.map((block, index) => <BlockRow key={block.id} block={block} blocks={blocks} index={index} isActive={activeId === block.id} onFocus={() => setActiveId(block.id)} onInput={(html) => updateBlock(block.id, { html })} onSplit={(beforeHtml, afterHtml, options) => splitBlock(block.id, beforeHtml, afterHtml, options)} onBackspace={(html) => mergeBlockAtStart(block.id, html)} onChangeType={(type) => updateBlock(block.id, { type, html: convertBlockContent(block, type) })} onDelete={() => deleteBlock(block.id)} onAddAfter={() => addBlock('paragraph', block.id)} onFormat={(action) => moveBlock(block.id, action)} selectionAnchorRef={selectionAnchorRef} onUndo={undo} onRedo={redo} />)}
           </div>
           <div className="add-block-wrap">
             <button className="add-block-button" onClick={() => setShowAddMenu((value) => !value)}><Icon name="plus" size={17} />Add block</button>

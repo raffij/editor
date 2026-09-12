@@ -22,9 +22,9 @@ export function Icon({ name, size = 18, stroke = 1.8 }) {
   return <svg aria-hidden="true" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>
 }
 
-export function ToolbarButton({ label, children, onClick, active = false, shortcut }) {
+export function ToolbarButton({ label, children, onClick, active = false, shortcut, disabled = false }) {
   return (
-    <button className={`toolbar-button ${active ? 'is-active' : ''}`} title={shortcut ? `${label} (${shortcut})` : label} aria-label={label} onMouseDown={(event) => event.preventDefault()} onClick={onClick}>
+    <button className={`toolbar-button ${active ? 'is-active' : ''}`} title={shortcut ? `${label} (${shortcut})` : label} aria-label={label} disabled={disabled} onMouseDown={(event) => event.preventDefault()} onClick={onClick}>
       {children}
     </button>
   )
