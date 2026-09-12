@@ -11,7 +11,13 @@ import { waitForStable } from './_helpers.js'
 const instanceSelector = (instance) => `[data-instance="${instance}"]`
 
 async function openTwoInstances(page) {
-  await page.goto('/two-instances.html')
+  // The app's own base path varies: '/' locally, '/editor/' in CI (vite.config.js
+  // sets base '/editor/' whenever GITHUB_ACTIONS is set, matching the GitHub
+  // Pages deploy path, and vite preview mounts the whole built app there).
+  // Discover it by following the root's own redirect rather than hardcoding
+  // either path, then resolve the fixture page against it.
+  await page.goto('/')
+  await page.goto(new URL('two-instances.html', page.url()).toString())
   await page.waitForSelector('[data-instance="a"] .block-row')
   await page.waitForSelector('[data-instance="b"] .block-row')
   await waitForStable(page)
