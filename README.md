@@ -86,6 +86,12 @@ other's document.
 pasted tables/divs/images/inline styles/scripts are stripped, while bold/italic/links and,
 inside a list block, list items survive.
 
+Undo/redo (⌘Z / ⌘⇧Z, or the toolbar buttons) is a real history stack over the block array
+(`src/logic/use-document-editor.js`), not the browser's native `execCommand('undo')` — which
+only replays one block's own text-edit history and knows nothing about adding, deleting,
+moving, splitting, or merging blocks. A run of typing coalesces into a single undo step;
+every structural edit is its own step. `e2e/undo-redo.spec.js` covers both.
+
 The suites run fully in parallel (each test seeds its own page), and waits are event-driven
 rather than fixed sleeps. Locally they run against the Vite dev server; on CI they run against a
 pre-built bundle served by `vite preview`, with `npm` and the Playwright browser downloads

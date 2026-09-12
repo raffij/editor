@@ -34,6 +34,22 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
   // caret-navigation.js.
   const rootRef = useRef(null)
 
+  // Undo/redo history: a stack of block-array snapshots, not React state
+  // itself (cloning the whole document into state on every keystroke would be
+  // wasteful) — `forceHistoryRerender` just makes canUndo/canRedo below react
+  // to it. `burstRef` coalesces a run of plain typing in one block into a
+  // single history entry (see updateBlock) so Undo doesn't remove one
+  // character at a time; every structural edit closes the current burst.
+  const historyRef = useRef({ past: [], future: [] })
+  const burstRef = useRef(null)
+  const [, forceHistoryRerender] = useState(0)
+
+  const pushHistory = (snapshot) => {
+    historyRef.current.past.push(snapshot)
+    historyRef.current.future = []
+    forceHistoryRerender((tick) => tick + 1)
+  }
+
   useEffect(() => {
     if (!controlled) onChange?.(blocks)
     setSaved(false)
@@ -49,17 +65,33 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     else setInternalBlocks(next)
   }
 
-  const updateBlock = (id, changes) => commitBlocks((current) => current.map((block) => block.id === id ? { ...block, ...changes, ...(changes.html != null ? { html: cleanBlockHtml(changes.html) } : {}) } : block))
+  // Type changes are a discrete undo step; a plain html edit (typing, paste,
+  // toolbar formatting) coalesces into whichever block currently has an open
+  // typing burst, so a run of keystrokes undoes in one step, not one per key.
+  const updateBlock = (id, changes) => {
+    if (changes.type != null) {
+      burstRef.current = null
+      pushHistory(blocks)
+    } else if (burstRef.current?.blockId !== id) {
+      burstRef.current = { blockId: id }
+      pushHistory(blocks)
+    }
+    commitBlocks((current) => current.map((block) => block.id === id ? { ...block, ...changes, ...(changes.html != null ? { html: cleanBlockHtml(changes.html) } : {}) } : block))
+  }
 
   // Replaces the whole block list with a new array (used for edits that span
   // many blocks at once, e.g. deleting across a cross-block selection).
   const replaceBlocks = (nextBlocks) => {
     selectionAnchorRef.current = null
+    burstRef.current = null
+    pushHistory(blocks)
     commitBlocks(nextBlocks)
   }
 
   const addBlock = (type = 'paragraph', afterId = blocks[blocks.length - 1]?.id) => {
     const newBlock = { id: makeBlockId(type), type, html: emptyBlockHtml(type) }
+    burstRef.current = null
+    pushHistory(blocks)
     commitBlocks((current) => {
       const position = current.findIndex((block) => block.id === afterId)
       const next = [...current]
@@ -80,23 +112,31 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     if (blocks.length === 1) return
     const index = blocks.findIndex((block) => block.id === id)
     const nextActive = blocks[index - 1] || blocks[index + 1]
+    burstRef.current = null
+    pushHistory(blocks)
     commitBlocks((current) => current.filter((block) => block.id !== id))
     setActiveId(nextActive?.id)
     if (nextActive) scheduleCaretAtTextOffset(rootRef.current, nextActive.id, htmlTextLength(nextActive.html))
   }
 
-  const moveBlock = (id, direction) => commitBlocks((current) => {
-    const index = current.findIndex((block) => block.id === id)
+  const moveBlock = (id, direction) => {
+    const index = blocks.findIndex((block) => block.id === id)
     let nextIndex = index + 1
     if (direction === 'move-up') nextIndex = index - 1
-    if (nextIndex < 0 || nextIndex >= current.length) return current
-    const next = [...current]
-    ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
-    return next
-  })
+    if (nextIndex < 0 || nextIndex >= blocks.length) return
+    burstRef.current = null
+    pushHistory(blocks)
+    commitBlocks((current) => {
+      const next = [...current]
+      ;[next[index], next[nextIndex]] = [next[nextIndex], next[index]]
+      return next
+    })
+  }
 
   const splitBlock = (id, beforeHtml, afterHtml, { currentType = null, insertParagraph = false, afterType = 'paragraph' } = {}) => {
     selectionAnchorRef.current = null
+    burstRef.current = null
+    pushHistory(blocks)
     const inserted = []
     if (insertParagraph) inserted.push({ id: makeBlockId('paragraph'), type: 'paragraph', html: '' })
     if (afterType) inserted.push({ id: makeBlockId(afterType), type: afterType, html: afterHtml })
@@ -132,6 +172,8 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     const current = { ...blocks[index], html: currentHtml }
     const mergedHtml = mergeBlockContent(previous, current)
     selectionAnchorRef.current = null
+    burstRef.current = null
+    pushHistory(blocks)
     const next = [...blocks]
     next[index - 1] = { ...previous, html: mergedHtml }
     next.splice(index, 1)
@@ -191,10 +233,46 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
   }
 
   const resetDocument = () => {
+    historyRef.current = { past: [], future: [] }
+    burstRef.current = null
+    forceHistoryRerender((tick) => tick + 1)
     commitBlocks(cloneBlocks(initialBlocks || starterBlocks))
     setActiveId(initialBlocks?.[0]?.id || starterBlocks[0].id)
     selectionAnchorRef.current = null
   }
+
+  // Restores a history snapshot without pushing a new history entry (undo()
+  // and redo() below manage the stacks themselves). Keeps the caret on the
+  // previously active block when it survives in the snapshot, at the end of
+  // its text — the same placement deleteBlock/mergeBlockAtStart already use.
+  const applyHistorySnapshot = (snapshot) => {
+    commitBlocks(snapshot)
+    const survivorId = snapshot.some((block) => block.id === activeId) ? activeId : snapshot[0]?.id ?? null
+    setActiveId(survivorId)
+    const survivor = snapshot.find((block) => block.id === survivorId)
+    if (survivor) scheduleCaretAtTextOffset(rootRef.current, survivor.id, htmlTextLength(survivor.html))
+  }
+
+  const undo = () => {
+    if (!historyRef.current.past.length) return
+    burstRef.current = null
+    const previous = historyRef.current.past.pop()
+    historyRef.current.future.push(blocks)
+    forceHistoryRerender((tick) => tick + 1)
+    applyHistorySnapshot(previous)
+  }
+
+  const redo = () => {
+    if (!historyRef.current.future.length) return
+    burstRef.current = null
+    const next = historyRef.current.future.pop()
+    historyRef.current.past.push(blocks)
+    forceHistoryRerender((tick) => tick + 1)
+    applyHistorySnapshot(next)
+  }
+
+  const canUndo = historyRef.current.past.length > 0
+  const canRedo = historyRef.current.future.length > 0
 
   return {
     blocks,
@@ -223,5 +301,9 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     copyJson,
     resetDocument,
     convertBlockContent,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   }
 }
