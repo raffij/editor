@@ -28,6 +28,11 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
   const [showAddMenu, setShowAddMenu] = useState(false)
   const [toast, setToast] = useState('')
   const selectionAnchorRef = useRef(null)
+  // The DOM root of this editor instance (attached by EditorSurface). Caret
+  // placement and cross-block selection lookups are scoped to it so that two
+  // mounted instances on one page never resolve each other's blocks — see
+  // caret-navigation.js.
+  const rootRef = useRef(null)
 
   useEffect(() => {
     if (!controlled) onChange?.(blocks)
@@ -68,7 +73,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     // runs, and a single setTimeout can fire before React mounts it — leaving
     // focus (and the scroll) behind on the old block while the new one sits
     // off-screen.
-    scheduleFocusBlockStart(newBlock.id)
+    scheduleFocusBlockStart(rootRef.current, newBlock.id)
   }
 
   const deleteBlock = (id) => {
@@ -77,7 +82,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     const nextActive = blocks[index - 1] || blocks[index + 1]
     commitBlocks((current) => current.filter((block) => block.id !== id))
     setActiveId(nextActive?.id)
-    if (nextActive) scheduleCaretAtTextOffset(nextActive.id, htmlTextLength(nextActive.html))
+    if (nextActive) scheduleCaretAtTextOffset(rootRef.current, nextActive.id, htmlTextLength(nextActive.html))
   }
 
   const moveBlock = (id, direction) => commitBlocks((current) => {
@@ -111,7 +116,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
       ? inserted[0]
       : blocks.find((b) => b.id === id)
     setActiveId(focusBlock?.id)
-    if (focusBlock) scheduleFocusBlockStart(focusBlock.id)
+    if (focusBlock) scheduleFocusBlockStart(rootRef.current, focusBlock.id)
   }
 
   const mergeBlockAtStart = (id, currentHtml) => {
@@ -137,11 +142,11 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
       // list: first item at index = the previous list's item count. Place the
       // caret at the start of that joined item, structurally, so spans/<br>/
       // empty items in the source don't shift where the caret lands.
-      scheduleCaretAtStartOfListItem(previous.id, countListItems(previous.html))
+      scheduleCaretAtStartOfListItem(rootRef.current, previous.id, countListItems(previous.html))
     } else {
       // Paragraph->paragraph or paragraph->list: single flattened text run, so
       // the numeric junction (end of the previous text) is reliable.
-      scheduleCaretAtTextOffset(previous.id, htmlTextLength(previous.html))
+      scheduleCaretAtTextOffset(rootRef.current, previous.id, htmlTextLength(previous.html))
     }
   }
 
@@ -150,10 +155,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     const target = document.activeElement
     if (!target?.isContentEditable) return
     cleanElement(target)
-    const row = target.closest('.block-row')
-    if (!row) return
-    const rowIndex = Array.from(document.querySelectorAll('.block-row')).indexOf(row)
-    const blockId = blocks[rowIndex]?.id
+    const blockId = target.dataset.blockId ?? target.closest('[data-block-id]')?.dataset.blockId
     if (blockId) updateBlock(blockId, { html: target.innerHTML })
   }
 
@@ -206,6 +208,7 @@ export function useDocumentEditor({ initialBlocks = starterBlocks, value, onChan
     toast,
     characterCount,
     selectionAnchorRef,
+    rootRef,
     updateBlock,
     addBlock,
     deleteBlock,
