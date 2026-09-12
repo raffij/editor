@@ -76,6 +76,16 @@ caret lands where the removed block sat and the viewport only scrolls when the c
 is off-screen, and the mirror promise for adding/splitting blocks: a new empty block
 scrolls into view with minimal movement (no centring jump) on desktop and mobile viewports.
 
+Two more suites guard the embed use case specifically. `e2e/multi-instance.spec.js` mounts
+two independent editors on one page (`two-instances.html`, a Playwright-only fixture built
+alongside the main app so CI's `vite preview` bundle serves it too) — every selection/caret/drag
+lookup in `src/logic/caret-navigation.js` is scoped to the editor root the interaction happened
+in, so two instances (even with identical starter-content block ids) never see or mutate each
+other's document.
+`e2e/paste-sanitize.spec.js` pins down `sanitizePastedHtml` (`src/logic/document-model.js`):
+pasted tables/divs/images/inline styles/scripts are stripped, while bold/italic/links and,
+inside a list block, list items survive.
+
 The suites run fully in parallel (each test seeds its own page), and waits are event-driven
 rather than fixed sleeps. Locally they run against the Vite dev server; on CI they run against a
 pre-built bundle served by `vite preview`, with `npm` and the Playwright browser downloads

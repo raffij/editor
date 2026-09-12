@@ -1,6 +1,6 @@
 import React, { useLayoutEffect, useRef } from 'react'
 import { applyCrossBlockDeletion, beginBlockDragSelection, handleArrowNavigation, handleCrossBlockEditKey, isCaretAtBlockStart } from '../logic/caret-navigation'
-import { blockTagName, cleanBlockHtml, cleanElement, emptyBlockHtml, hasReadableText, isListType, typeMeta } from '../logic/document-model'
+import { blockTagName, cleanBlockHtml, cleanElement, emptyBlockHtml, hasReadableText, isListType, sanitizePastedHtml, typeMeta } from '../logic/document-model'
 import { Icon } from './editor-controls'
 
 function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, selectionAnchorRef }) {
@@ -78,7 +78,8 @@ function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, s
     if (readable && index === 0) return
     if (!readable && blocks.length === 1) return
     const survivor = readable ? blocks[index - 1] : (blocks[index - 1] || blocks[index + 1])
-    const survivorEl = survivor && document.querySelector(`[data-block-id="${survivor.id}"]`)
+    const root = ref.current?.closest('[data-papertrail-root]')
+    const survivorEl = survivor && root?.querySelector(`[data-block-id="${survivor.id}"]`)
     survivorEl?.focus({ preventScroll: true })
   }
 
@@ -152,6 +153,22 @@ function BlockContent({ block, blocks, onFocus, onInput, onSplit, onBackspace, s
         lastHtmlRef.current = html
         selectionAnchorRef.current = null
         onInput(html)
+      }}
+      onPaste={(event) => {
+        event.preventDefault()
+        const clipboard = event.clipboardData
+        const html = clipboard?.getData('text/html')
+        const text = clipboard?.getData('text/plain') ?? ''
+        const source = html || text
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/\n/g, '<br>')
+        const sanitized = sanitizePastedHtml(source, { isList: isListType(block.type) })
+        document.execCommand('insertHTML', false, sanitized)
+        cleanElement(event.currentTarget)
+        const nextHtml = event.currentTarget.innerHTML
+        lastHtmlRef.current = nextHtml
+        selectionAnchorRef.current = null
+        onInput(nextHtml)
       }}
       onKeyDown={(event) => {
         if (handleArrowNavigation(event, ref.current, selectionAnchorRef)) return

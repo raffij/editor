@@ -2,19 +2,21 @@ import React from 'react'
 import { BlockRow } from './block-editor'
 import { Icon, ToolbarButton } from './editor-controls'
 import { blockDescription, highlightJson, joinAcrossDeletedBoundary, typeMeta } from '../logic/document-model'
-import { crossBlockSelectionRects, scheduleCaretAtTextOffset, setCrossBlockDeleteHandler, setCrossBlockSplitHandler, subscribeCrossBlockSelection } from '../logic/caret-navigation'
+import { crossBlockSelectionRects, registerSelectionRoot, scheduleCaretAtTextOffset, setCrossBlockDeleteHandler, setCrossBlockSplitHandler, subscribeCrossBlockSelection, unregisterSelectionRoot } from '../logic/caret-navigation'
 
 // Paints the highlight for a cross-block selection. Some engines (WebKit/Safari)
 // clamp a DOM Selection to a single editing host, so the cross-block selection
-// is tracked separately and this overlay renders its line rects.
-function CrossBlockSelectionOverlay() {
+// is tracked separately and this overlay renders its line rects. `rootRef` is
+// the ref object (not its current value) so this effect always reads the DOM
+// node that's actually attached by the time it runs, even on first mount.
+function CrossBlockSelectionOverlay({ rootRef }) {
   const [model, setModel] = React.useState(null)
   const [rects, setRects] = React.useState([])
 
-  React.useEffect(() => subscribeCrossBlockSelection(setModel), [])
+  React.useEffect(() => subscribeCrossBlockSelection(rootRef.current, setModel), [rootRef])
 
   React.useEffect(() => {
-    const update = () => setRects(model ? crossBlockSelectionRects() : [])
+    const update = () => setRects(model ? crossBlockSelectionRects(rootRef.current) : [])
     update()
     window.addEventListener('scroll', update, true)
     window.addEventListener('resize', update)
@@ -22,7 +24,7 @@ function CrossBlockSelectionOverlay() {
       window.removeEventListener('scroll', update, true)
       window.removeEventListener('resize', update)
     }
-  }, [model])
+  }, [model, rootRef])
 
   if (!model || !rects.length || model.anchor.id === model.focus.id) return null
   return (
@@ -54,6 +56,7 @@ export function EditorSurface({
     toast,
     characterCount,
     selectionAnchorRef,
+    rootRef,
     addBlock,
     updateBlock,
     replaceBlocks,
@@ -74,9 +77,17 @@ export function EditorSurface({
   const jsonPanelClass = jsonOpen ? 'open' : 'closed'
   const layoutClass = showJson ? '' : 'without-json'
 
+  // Registers this instance's DOM root so caret-navigation.js scopes every
+  // lookup to it, keeping multiple mounted editors on one page independent.
   React.useEffect(() => {
-    setCrossBlockSplitHandler((blockId, beforeHtml, afterHtml) => splitBlock(blockId, beforeHtml, afterHtml))
-  }, [splitBlock])
+    const root = rootRef.current
+    registerSelectionRoot(root)
+    return () => unregisterSelectionRoot(root)
+  }, [rootRef])
+
+  React.useEffect(() => {
+    setCrossBlockSplitHandler(rootRef.current, (blockId, beforeHtml, afterHtml) => splitBlock(blockId, beforeHtml, afterHtml))
+  }, [rootRef, splitBlock])
 
   // Handles deleting a cross-block selection (Backspace/Delete/typing over it).
   // Applies the computed block updates to the model, collapses the boundary
@@ -144,16 +155,16 @@ export function EditorSurface({
     const survives = nextBlocks.some((b) => b.id === fromBlock)
     const focusId = survives ? fromBlock : (nextBlocks[0]?.id || null)
     setActiveId(focusId)
-    if (survives) scheduleCaretAtTextOffset(fromBlock, caretOffset)
-    else if (nextBlocks[0]) scheduleCaretAtTextOffset(nextBlocks[0].id, 0)
+    if (survives) scheduleCaretAtTextOffset(rootRef.current, fromBlock, caretOffset)
+    else if (nextBlocks[0]) scheduleCaretAtTextOffset(rootRef.current, nextBlocks[0].id, 0)
   }
 
   React.useEffect(() => {
-    setCrossBlockDeleteHandler(handleCrossBlockDelete)
+    setCrossBlockDeleteHandler(rootRef.current, handleCrossBlockDelete)
   })
 
   return (
-    <div className="papertrail-editor-surface">
+    <div className="papertrail-editor-surface" data-papertrail-root="" ref={rootRef}>
       {showHeader && <div className="editor-header">
         <div><div className="breadcrumb"><span>Documents</span><span>/</span><strong>{documentTitle}</strong></div><div className="document-meta">Last edited today at 09:42 <span>·</span> {characterCount} characters</div></div>
         {showActions && <div className="editor-header-actions"><button className="quiet-button" onClick={exportJson}><span className="export-symbol">↓</span> Export JSON</button><button className="primary-button" onClick={saveDocument}>Save document</button></div>}
@@ -188,7 +199,7 @@ export function EditorSurface({
         </aside>}
       </div>
       {toast && <div className="toast"><span><Icon name="check" size={15} /></span>{toast}</div>}
-      <CrossBlockSelectionOverlay />
+      <CrossBlockSelectionOverlay rootRef={rootRef} />
     </div>
   )
 }

@@ -143,6 +143,68 @@ export function cleanBlockHtml(html) {
   return container.innerHTML
 }
 
+// Elements kept as-is (attributes stripped, except A's href) when sanitizing
+// pasted content. LI is only allowed when pasting into a list block.
+const PASTE_INLINE_ALLOWED = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'A', 'BR'])
+
+// Block-level elements (paragraphs, divs, headings, table rows, and list
+// items when they're being flattened into a non-list block) are unwrapped
+// like everything else not on the allowlist, but they represent a line of
+// content — unwrapping one without a break would run its text straight into
+// whatever follows it.
+const PASTE_LINE_BREAK_TAGS = new Set(['P', 'DIV', 'SECTION', 'ARTICLE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'TR', 'LI'])
+
+// Elements with no useful text representation: removed outright (not
+// unwrapped) so their contents — script/style text, an <img>'s binary data —
+// never leak into the flattened text.
+const PASTE_REMOVE_SELECTOR = 'script, style, img, picture, iframe, video, audio, object, embed, svg, canvas, noscript, link, meta, head, title'
+
+function insertBreakBoundary(element) {
+  const next = element.nextSibling
+  const alreadyBreak = next?.nodeType === Node.ELEMENT_NODE && next.tagName === 'BR'
+  if (next && !alreadyBreak) element.parentNode.insertBefore(document.createElement('br'), next)
+}
+
+// Sanitizes HTML from the clipboard (Word/Docs/a webpage) down to the same
+// small vocabulary the editor already produces: bold/italic/underline links,
+// line breaks, and — inside a list block — list items. Everything else
+// (tables, divs, images, inline styles/colors/fonts) is stripped to its text
+// content rather than carried into the document's JSON model. Idempotent,
+// and safe to run on HTML that isn't yet in the live DOM.
+export function sanitizePastedHtml(html, { isList = false } = {}) {
+  const container = document.createElement('div')
+  container.innerHTML = html || ''
+  container.querySelectorAll(PASTE_REMOVE_SELECTOR).forEach((el) => el.remove())
+
+  const allowed = isList ? new Set([...PASTE_INLINE_ALLOWED, 'LI']) : PASTE_INLINE_ALLOWED
+  const elements = Array.from(container.querySelectorAll('*'))
+  for (let i = elements.length - 1; i >= 0; i--) {
+    const el = elements[i]
+    const tag = el.tagName
+
+    if (tag === 'A') {
+      const href = el.getAttribute('href')
+      if (!href) {
+        replaceWithChildren(el)
+        continue
+      }
+      Array.from(el.attributes).forEach((attr) => { if (attr.name !== 'href') el.removeAttribute(attr.name) })
+      continue
+    }
+
+    if (allowed.has(tag)) {
+      Array.from(el.attributes).forEach((attr) => el.removeAttribute(attr.name))
+      continue
+    }
+
+    if (PASTE_LINE_BREAK_TAGS.has(tag) && (tag !== 'LI' || !isList)) insertBreakBoundary(el)
+    replaceWithChildren(el)
+  }
+
+  cleanElement(container)
+  return container.innerHTML
+}
+
 export function listItemsAsInlineHtml(html) {
   const container = document.createElement('div')
   container.innerHTML = html || ''
