@@ -801,42 +801,91 @@ export function handleArrowNavigation(event, element, selectionAnchorRef) {
 // own clipped bottom edge. Walk up from the caret to the nearest ancestor
 // that actually scrolls, and use its bounds instead; only fall back to the
 // window when nothing between the caret and <body> scrolls on its own.
-function nearestScrollBounds(node) {
+function nearestScroller(node) {
   let element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement
   while (element && element !== document.body) {
     const style = getComputedStyle(element)
     if ((style.overflowY === 'auto' || style.overflowY === 'scroll') && element.scrollHeight > element.clientHeight + 1) {
-      const rect = element.getBoundingClientRect()
-      return { top: rect.top, bottom: rect.bottom }
+      return element
     }
     element = element.parentElement
   }
-  return { top: 0, bottom: window.innerHeight }
+  return null
 }
 
-// Scrolls the caret into view only when it is off-screen. Scrolling the whole
-// block element instead (element.scrollIntoView({ block: 'center' })) re-centers
-// the page on every merge/add/delete even when the caret is already visible —
-// and when the target block is taller than the viewport it scrolls the document
-// by hundreds of pixels, which reads as the page or keyboard jumping. Scrolling
-// a collapsed caret range is a no-op while the caret is fully visible, and only
-// then moves the document the minimum needed, with breathing room around the
-// caret instead of pinning it flush to the viewport edge.
+// Visible height of the window, accounting for the mobile software keyboard.
+// With the keyboard open, window.innerHeight still reports the full layout
+// viewport while the caret disappears behind the keyboard; visualViewport
+// shrinks to what is actually visible, so a caret below its bottom edge must
+// count as off-screen and be scrolled up above the keyboard.
+function windowVisibleBottom() {
+  if (window.visualViewport && Number.isFinite(window.visualViewport.height)) return window.visualViewport.height
+  return window.innerHeight
+}
+
+// Geometry for the collapsed caret. In an empty block there are no text nodes
+// and the collapsed range reports a 0x0 rect at the origin, which the old
+// check treated as "nothing to scroll" — so a newly added empty block at the
+// end of a long document never scrolled into view and stayed off-screen.
+// Fall back to the block element's own box (an empty block still occupies its
+// min-height line), so empty blocks scroll exactly like non-empty ones.
+function caretGeometry(range) {
+  const rect = range.getBoundingClientRect()
+  if (rect && (rect.width > 0 || rect.height > 0)) return { top: rect.top, bottom: rect.bottom }
+  const host = blockElementForNode(range.startContainer) || document.activeElement?.closest?.('[data-block-id]')
+  if (host) {
+    const box = host.getBoundingClientRect()
+    // Empty blocks are one line tall; anchor to the top line rather than the
+    // whole box so a tall element can never count as "visible" while its
+    // first line is clipped.
+    const lineHeight = parseFloat(getComputedStyle(host).lineHeight) || 24
+    const top = box.top
+    return { top, bottom: Math.min(box.bottom, top + lineHeight) }
+  }
+  if (rect) return { top: rect.top, bottom: rect.bottom }
+  return null
+}
+
+// Scrolls the caret into view only when it is off-screen, moving the minimum
+// distance needed with breathing room around the caret. The previous
+// range.scrollIntoView({ block: 'center' }) re-centred the page on every
+// merge/add/delete even when the caret only just clipped the edge — and when
+// the target block was taller than the viewport it scrolled by hundreds of
+// pixels, which reads as the page or keyboard jumping. Manual scrollTop
+// adjustment is a no-op while the caret is fully visible and otherwise moves
+// only the clipped distance, never to the viewport centre.
 function scrollCaretIntoView() {
   const selection = window.getSelection()
   const range = selection?.rangeCount ? selection.getRangeAt(0) : null
   if (!range || !range.collapsed) return
-  const rect = range.getBoundingClientRect()
-  if (!rect || (!rect.width && !rect.height)) return
+  const caret = caretGeometry(range)
+  if (!caret || !Number.isFinite(caret.top) || !Number.isFinite(caret.bottom)) return
   const margin = 24
-  const bounds = nearestScrollBounds(range.startContainer)
-  if (rect.top >= bounds.top + margin && rect.bottom <= bounds.bottom - margin) return
-  range.scrollIntoView({ block: 'center', inline: 'nearest' })
+  const scroller = nearestScroller(range.startContainer)
+  if (scroller) {
+    const box = scroller.getBoundingClientRect()
+    // The scroller box itself can extend behind the mobile keyboard; clamp to
+    // what is actually visible so a caret inside the scroller but behind the
+    // keyboard still scrolls up.
+    const visibleBottom = Math.min(box.bottom, windowVisibleBottom())
+    const visibleTop = Math.max(box.top, 0)
+    if (caret.top >= visibleTop + margin && caret.bottom <= visibleBottom - margin) return
+    if (caret.top < visibleTop + margin) scroller.scrollTop += caret.top - visibleTop - margin
+    else scroller.scrollTop += caret.bottom - visibleBottom + margin
+    return
+  }
+  const bottom = windowVisibleBottom()
+  if (caret.top >= margin && caret.bottom <= bottom - margin) return
+  if (caret.top < margin) window.scrollBy(0, caret.top - margin)
+  else window.scrollBy(0, caret.bottom - bottom + margin)
 }
 
-export function focusBlockStart(id) {
+export function focusBlockStart(id, attempt = 0) {
   const element = document.querySelector(`[data-block-id="${id}"]`)
-  if (!element) return
+  if (!element) {
+    if (attempt < 4) requestAnimationFrame(() => focusBlockStart(id, attempt + 1))
+    return
+  }
   const caretTarget = element.querySelector('li') || element
   caretTarget.focus({ preventScroll: true })
   const selection = window.getSelection()
@@ -870,6 +919,10 @@ export function scheduleCaretAtTextOffset(id, offset) {
   requestAnimationFrame(() => requestAnimationFrame(() => focusBlockAtTextOffset(id, offset)))
 }
 
+export function scheduleFocusBlockStart(id) {
+  requestAnimationFrame(() => requestAnimationFrame(() => focusBlockStart(id)))
+}
+
 // Place the caret at the start of a specific list item (0-based index). Used
 // after a merge joins a paragraph into a list as a new item: the caret should
 // land at the start of that joined item's text (e.g. the start of "kkkk"), not
@@ -886,7 +939,13 @@ export function scheduleCaretAtStartOfListItem(id, itemIndex, attempt = 0) {
     const li = items[itemIndex] || items[items.length - 1]
     if (!li) {
       element.focus({ preventScroll: true })
-      element.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+      const fallback = document.createRange()
+      fallback.selectNodeContents(element)
+      fallback.collapse(true)
+      const fallbackSelection = window.getSelection()
+      fallbackSelection.removeAllRanges()
+      fallbackSelection.addRange(fallback)
+      scrollCaretIntoView()
       return
     }
     element.focus({ preventScroll: true })

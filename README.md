@@ -73,7 +73,8 @@ when the paragraph carries spans/<br> and the target list has empty items), the 
 highlights never bleed into the 40px control gutter on the left of each block, and the
 promise that backspacing a block away (merge or delete) never re-centres the page: the
 caret lands where the removed block sat and the viewport only scrolls when the caret itself
-is off-screen.
+is off-screen, and the mirror promise for adding/splitting blocks: a new empty block
+scrolls into view with minimal movement (no centring jump) on desktop and mobile viewports.
 
 The suites run fully in parallel (each test seeds its own page), and waits are event-driven
 rather than fixed sleeps. Locally they run against the Vite dev server; on CI they run against a
